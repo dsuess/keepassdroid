@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2011 Brian Pellin.
+ * Copyright 2009-2013 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -19,6 +19,8 @@
  */
 package com.keepassdroid.database.load;
 
+import static com.keepassdroid.database.PwDatabaseV4XML.*;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
@@ -26,11 +28,9 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.Stack;
-import java.util.TimeZone;
 import java.util.UUID;
 import java.util.zip.GZIPInputStream;
 
@@ -47,9 +47,11 @@ import biz.source_code.base64Coder.Base64Coder;
 import com.keepassdroid.UpdateStatus;
 import com.keepassdroid.crypto.CipherFactory;
 import com.keepassdroid.crypto.PwStreamCipherFactory;
+import com.keepassdroid.database.BinaryPool;
 import com.keepassdroid.database.ITimeLogger;
 import com.keepassdroid.database.PwCompressionAlgorithm;
 import com.keepassdroid.database.PwDatabaseV4;
+import com.keepassdroid.database.PwDatabaseV4XML;
 import com.keepassdroid.database.PwDbHeaderV4;
 import com.keepassdroid.database.PwDeletedObject;
 import com.keepassdroid.database.PwEntryV4;
@@ -58,15 +60,27 @@ import com.keepassdroid.database.PwIconCustom;
 import com.keepassdroid.database.exception.ArcFourException;
 import com.keepassdroid.database.exception.InvalidDBException;
 import com.keepassdroid.database.exception.InvalidPasswordException;
+import com.keepassdroid.database.security.ProtectedBinary;
+import com.keepassdroid.database.security.ProtectedString;
 import com.keepassdroid.stream.BetterCipherInputStream;
 import com.keepassdroid.stream.HashedBlockInputStream;
 import com.keepassdroid.stream.LEDataInputStream;
+import com.keepassdroid.utils.EmptyUtils;
+import com.keepassdroid.utils.MemUtil;
 import com.keepassdroid.utils.Types;
 
 public class ImporterV4 extends Importer {
 	
 	private StreamCipher randomStream;
 	private PwDatabaseV4 db;
+	private BinaryPool binPool = new BinaryPool();
+
+		private byte[] hashOfHeader = null;
+	
+	protected PwDatabaseV4 createDB() {
+		return new PwDatabaseV4();
+
+	}
 
 	@Override
 	public PwDatabaseV4 openDatabase(InputStream inStream, String password,
@@ -80,11 +94,11 @@ public class ImporterV4 extends Importer {
 			String keyfile, UpdateStatus status) throws IOException,
 			InvalidDBException {
 
-		db = new PwDatabaseV4();
+		db = createDB();
 		
 		PwDbHeaderV4 header = new PwDbHeaderV4(db);
 		
-		header.loadFromFile(inStream);
+		hashOfHeader = header.loadFromFile(inStream);
 			
 		db.setMasterKey(password, keyfile);
 		db.makeFinalKey(header.masterSeed, header.transformSeed, (int)db.numKeyEncRounds);
@@ -92,7 +106,7 @@ public class ImporterV4 extends Importer {
 		// Attach decryptor
 		Cipher cipher;
 		try {
-			cipher = CipherFactory.getInstance(db.dataCipher, db.finalKey, header.encryptionIV);
+			cipher = CipherFactory.getInstance(db.dataCipher, Cipher.DECRYPT_MODE, db.finalKey, header.encryptionIV);
 		} catch (NoSuchAlgorithmException e) {
 			throw new IOException("Invalid algorithm.");
 		} catch (NoSuchPaddingException e) {
@@ -105,9 +119,14 @@ public class ImporterV4 extends Importer {
 		
 		InputStream decrypted = new BetterCipherInputStream(inStream, cipher, 50 * 1024);
 		LEDataInputStream dataDecrypted = new LEDataInputStream(decrypted);
-		byte[] storedStartBytes = dataDecrypted.readBytes(32);
-		if ( storedStartBytes == null || storedStartBytes.length != 32 ) {
-			throw new IOException("Invalid data.");
+		byte[] storedStartBytes = null;
+		try {
+			storedStartBytes = dataDecrypted.readBytes(32);
+			if ( storedStartBytes == null || storedStartBytes.length != 32 ) {
+				throw new InvalidPasswordException();
+			}
+		} catch (IOException e) {
+			throw new InvalidPasswordException();
 		}
 		
 		if ( ! Arrays.equals(storedStartBytes, header.streamStartBytes) ) {
@@ -165,124 +184,17 @@ public class ImporterV4 extends Importer {
         Binaries
 	}
 	
-    private static final String ElemDocNode = "KeePassFile";
-    private static final String ElemMeta = "Meta";
-    private static final String ElemRoot = "Root";
-    private static final String ElemGroup = "Group";
-    private static final String ElemEntry = "Entry";
-
-    private static final String ElemGenerator = "Generator";
-    private static final String ElemDbName = "DatabaseName";
-    private static final String ElemDbNameChanged = "DatabaseNameChanged";
-    private static final String ElemDbDesc = "DatabaseDescription";
-    private static final String ElemDbDescChanged = "DatabaseDescriptionChanged";
-    private static final String ElemDbDefaultUser = "DefaultUserName";
-    private static final String ElemDbDefaultUserChanged = "DefaultUserNameChanged";
-    private static final String ElemDbMntncHistoryDays = "MaintenanceHistoryDays";
-    private static final String ElemDbColor = "Color";
-    private static final String ElemDbKeyChanged = "MasterKeyChanged";
-    private static final String ElemDbKeyChangeRec = "MasterKeyChangeRec";
-    private static final String ElemDbKeyChangeForce = "MasterKeyChangeForce";
-    private static final String ElemRecycleBinEnabled = "RecycleBinEnabled";
-    private static final String ElemRecycleBinUuid = "RecycleBinUUID";
-    private static final String ElemRecycleBinChanged = "RecycleBinChanged";
-    private static final String ElemEntryTemplatesGroup = "EntryTemplatesGroup";
-    private static final String ElemEntryTemplatesGroupChanged = "EntryTemplatesGroupChanged";
-    private static final String ElemHistoryMaxItems = "HistoryMaxItems";
-    private static final String ElemHistoryMaxSize = "HistoryMaxSize";
-    private static final String ElemLastSelectedGroup = "LastSelectedGroup";
-    private static final String ElemLastTopVisibleGroup = "LastTopVisibleGroup";
-
-    private static final String ElemMemoryProt = "MemoryProtection";
-    private static final String ElemProtTitle = "ProtectTitle";
-    private static final String ElemProtUserName = "ProtectUserName";
-    private static final String ElemProtPassword = "ProtectPassword";
-    private static final String ElemProtURL = "ProtectURL";
-    private static final String ElemProtNotes = "ProtectNotes";
-    private static final String ElemProtAutoHide = "AutoEnableVisualHiding";
-
-    private static final String ElemCustomIcons = "CustomIcons";
-    private static final String ElemCustomIconItem = "Icon";
-    private static final String ElemCustomIconItemID = "UUID";
-    private static final String ElemCustomIconItemData = "Data";
-
-    private static final String ElemAutoType = "AutoType";
-    private static final String ElemHistory = "History";
-
-    private static final String ElemName = "Name";
-    private static final String ElemNotes = "Notes";
-    private static final String ElemUuid = "UUID";
-    private static final String ElemIcon = "IconID";
-    private static final String ElemCustomIconID = "CustomIconUUID";
-    private static final String ElemFgColor = "ForegroundColor";
-    private static final String ElemBgColor = "BackgroundColor";
-    private static final String ElemOverrideUrl = "OverrideURL";
-    private static final String ElemTimes = "Times";
-    private static final String ElemTags = "Tags";
-
-    private static final String ElemCreationTime = "CreationTime";
-    private static final String ElemLastModTime = "LastModificationTime";
-    private static final String ElemLastAccessTime = "LastAccessTime";
-    private static final String ElemExpiryTime = "ExpiryTime";
-    private static final String ElemExpires = "Expires";
-    private static final String ElemUsageCount = "UsageCount";
-    private static final String ElemLocationChanged = "LocationChanged";
-
-    private static final String ElemGroupDefaultAutoTypeSeq = "DefaultAutoTypeSequence";
-    private static final String ElemEnableAutoType = "EnableAutoType";
-    private static final String ElemEnableSearching = "EnableSearching";
-
-    private static final String ElemString = "String";
-    private static final String ElemBinary = "Binary";
-    private static final String ElemKey = "Key";
-    private static final String ElemValue = "Value";
-
-    private static final String ElemAutoTypeEnabled = "Enabled";
-    private static final String ElemAutoTypeObfuscation = "DataTransferObfuscation";
-    private static final String ElemAutoTypeDefaultSeq = "DefaultSequence";
-    private static final String ElemAutoTypeItem = "Association";
-    private static final String ElemWindow = "Window";
-    private static final String ElemKeystrokeSequence = "KeystrokeSequence";
-    
-    private static final String ElemBinaries = "Binaries";
-
-    private static final String AttrId = "ID";
-    private static final String AttrRef = "Ref";
-    private static final String AttrProtected = "Protected";
-    private static final String AttrCompressed = "Compressed";
-
-    private static final String ElemIsExpanded = "IsExpanded";
-    private static final String ElemLastTopVisibleEntry = "LastTopVisibleEntry";
-
-    private static final String ElemDeletedObjects = "DeletedObjects";
-    private static final String ElemDeletedObject = "DeletedObject";
-    private static final String ElemDeletionTime = "DeletionTime";
-
-    @SuppressWarnings("unused")
-	private static final String ValFalse = "False";
-    private static final String ValTrue = "True";
-
-    private static final String ElemCustomData = "CustomData";
-    private static final String ElemStringDictExItem = "Item";
     
     private static final long DEFAULT_HISTORY_DAYS = 365;
-    
-	private static final SimpleDateFormat dateFormat;
-	
-	static {
-		dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
-		dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-	}
-
 	
 	private boolean readNextNode = true;
 	private Stack<PwGroupV4> ctxGroups = new Stack<PwGroupV4>();
 	private PwGroupV4 ctxGroup = null;
 	private PwEntryV4 ctxEntry = null;
 	private String ctxStringName = null;
-	private String ctxStringValue = null;
+	private ProtectedString ctxStringValue = null;
 	private String ctxBinaryName = null;
-	private byte[] ctxBinaryValue = null;
+	private ProtectedBinary ctxBinaryValue = null;
 	private String ctxATName = null;
 	private String ctxATSeq = null;
 	private boolean entryInHistory = false;
@@ -293,7 +205,7 @@ public class ImporterV4 extends Importer {
 	private String customDataKey = null;
 	private String customDataValue = null;
 	
-	private void ReadXmlStreamed(InputStream readerStream) throws IOException {
+	private void ReadXmlStreamed(InputStream readerStream) throws IOException, InvalidDBException {
 		
 			try {
 				ReadDocumentStreamed(CreatePullParser(readerStream));
@@ -313,7 +225,7 @@ public class ImporterV4 extends Importer {
 		return xpp;
 	}
 
-	private void ReadDocumentStreamed(XmlPullParser xpp) throws XmlPullParserException, IOException {
+	private void ReadDocumentStreamed(XmlPullParser xpp) throws XmlPullParserException, IOException, InvalidDBException {
 
 		ctxGroups.clear();
 		
@@ -351,7 +263,7 @@ public class ImporterV4 extends Importer {
 	}
 
 
-	private KdbContext ReadXmlElement(KdbContext ctx, XmlPullParser xpp) throws XmlPullParserException, IOException {
+	private KdbContext ReadXmlElement(KdbContext ctx, XmlPullParser xpp) throws XmlPullParserException, IOException, InvalidDBException {
 		String name = xpp.getName();
 		switch (ctx) {
 		case Null:
@@ -373,6 +285,14 @@ public class ImporterV4 extends Importer {
 		case Meta:
 			if ( name.equalsIgnoreCase(ElemGenerator) ) {
 				ReadString(xpp); // Ignore
+			} else if ( name.equalsIgnoreCase(ElemHeaderHash) ) {
+				String encodedHash = ReadString(xpp);
+				if (!EmptyUtils.isNullOrEmpty(encodedHash) && (hashOfHeader != null)) {
+					byte[] hash = Base64Coder.decode(encodedHash);
+					if (!Arrays.equals(hash, hashOfHeader)) {
+						throw new InvalidDBException();
+					}
+				}
 			} else if ( name.equalsIgnoreCase(ElemDbName) ) {
 				db.name = ReadString(xpp);
 			} else if ( name.equalsIgnoreCase(ElemDbNameChanged) ) {
@@ -386,8 +306,8 @@ public class ImporterV4 extends Importer {
 			} else if ( name.equalsIgnoreCase(ElemDbDefaultUserChanged) ) {
 				db.defaultUserNameChanged = ReadTime(xpp);
 			} else if ( name.equalsIgnoreCase(ElemDbColor)) {
-				// TODO: Store this somewhere when writing enabled
-				ReadString(xpp);
+				// TODO: Add support to interpret the color if we want to allow changing the database color
+				db.color = ReadString(xpp);
 			} else if ( name.equalsIgnoreCase(ElemDbMntncHistoryDays) ) {
 				db.maintenanceHistoryDays = ReadUInt(xpp, DEFAULT_HISTORY_DAYS);
 			} else if ( name.equalsIgnoreCase(ElemDbKeyChanged) ) {
@@ -411,11 +331,9 @@ public class ImporterV4 extends Importer {
 			} else if ( name.equalsIgnoreCase(ElemEntryTemplatesGroupChanged) ) {
 				db.entryTemplatesGroupChanged = ReadTime(xpp);
 			} else if ( name.equalsIgnoreCase(ElemHistoryMaxItems) ) {
-				// TODO: Store this somewhere when writing enabled
-				ReadInt(xpp, -1);
+				db.historyMaxItems = ReadInt(xpp, -1);
 			} else if ( name.equalsIgnoreCase(ElemHistoryMaxSize) ) {
-				// TODO: Store this somewhere when writing enabled
-				ReadLong(xpp, -1);
+				db.historyMaxSize = ReadLong(xpp, -1);
 			} else if ( name.equalsIgnoreCase(ElemEntryTemplatesGroupChanged) ) {
 				db.entryTemplatesGroupChanged = ReadTime(xpp);
 			} else if ( name.equalsIgnoreCase(ElemLastSelectedGroup) ) {
@@ -474,9 +392,8 @@ public class ImporterV4 extends Importer {
 			if ( name.equalsIgnoreCase(ElemBinary) ) {
 				String key = xpp.getAttributeValue(null, AttrId);
 				if ( key != null ) {
-					// TODO: Store this somewhere when writing enabled
-					@SuppressWarnings("unused")
-					byte[] pbData = ReadProtectedBinary(xpp);
+					ProtectedBinary pbData = ReadProtectedBinary(xpp);
+					binPool.put(key, pbData);
 				} else {
 					ReadUnknown(xpp);
 				}
@@ -814,10 +731,14 @@ public class ImporterV4 extends Importer {
 	private Date ReadTime(XmlPullParser xpp) throws IOException, XmlPullParserException {
 		String sDate = ReadString(xpp);
 		
-		Date utcDate;
+		Date utcDate = null;
 		try {
-			utcDate = dateFormat.parse(sDate);
+			utcDate = PwDatabaseV4XML.dateFormat.parse(sDate);
 		} catch (ParseException e) {
+			// Catch with null test below
+		}
+		
+		if (utcDate == null) {
 			utcDate = new Date(0L);
 		}
 		
@@ -919,28 +840,27 @@ public class ImporterV4 extends Importer {
 		
 	}
 	
-	private String ReadProtectedString(XmlPullParser xpp) throws XmlPullParserException, IOException {
+	private ProtectedString ReadProtectedString(XmlPullParser xpp) throws XmlPullParserException, IOException {
 		byte[] buf = ProcessNode(xpp);
 		
 		if ( buf != null) {
 			try {
-				return new String(buf, "UTF-8");
+				return new ProtectedString(true, new String(buf, "UTF-8"));
 			} catch (UnsupportedEncodingException e) {
 				e.printStackTrace();
 				throw new IOException(e.getLocalizedMessage());
 			} 
 		}
 		
-		return ReadString(xpp);
+		return new ProtectedString(false, ReadString(xpp));
 	}
 	
-	private byte[] ReadProtectedBinary(XmlPullParser xpp) throws XmlPullParserException, IOException {
+	private ProtectedBinary ReadProtectedBinary(XmlPullParser xpp) throws XmlPullParserException, IOException {
 		String ref = xpp.getAttributeValue(null, AttrRef);
 		if (ref != null) {
 			xpp.next(); // Consume end tag
 			
-			// TODO: Get binary from binpool
-			return new byte[0];
+			return binPool.get(ref);
 		} 
 		
 		boolean compressed = false;
@@ -951,17 +871,18 @@ public class ImporterV4 extends Importer {
 		
 		byte[] buf = ProcessNode(xpp);
 		
-		if ( buf != null ) return buf;
+		if ( buf != null ) return new ProtectedBinary(true, buf);
 		
 		String base64 = ReadString(xpp);
-		if ( base64.length() == 0 ) return new byte[0];
+		if ( base64.length() == 0 ) return ProtectedBinary.EMPTY;
 		
 		byte[] data = Base64Coder.decode(base64);
 		
 		if (compressed) {
-			// TODO: Decompress data, it's gzipped, for now ignore since we don't use this data
+			data = MemUtil.decompress(data);
 		}
-		return data;
+		
+		return new ProtectedBinary(false, data);
 	}
 	
 	private String ReadString(XmlPullParser xpp) throws IOException, XmlPullParserException {

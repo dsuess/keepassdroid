@@ -1,5 +1,5 @@
 /*
- * Copyright 2009 Brian Pellin.
+ * Copyright 2009-2013 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -19,6 +19,12 @@
  */
 package com.keepassdroid.utils;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+
+import com.keepassdroid.database.exception.SamsungClipboardException;
+
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
@@ -33,9 +39,14 @@ public class Util {
 		return clipboard.getText().toString();
 	}
 	
-	public static void copyToClipboard(Context context, String text) {
+	public static void copyToClipboard(Context context, String text) throws SamsungClipboardException {
 		ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
-		clipboard.setText(text);
+		
+		try {
+			clipboard.setText(text);
+		} catch (NullPointerException e) {
+			throw new SamsungClipboardException(e);
+		}
 	}
 	
 	public static void gotoUrl(Context context, String url) throws ActivityNotFoundException {
@@ -51,7 +62,6 @@ public class Util {
 
 	public static String getEditText(Activity act, int resId) {
 		TextView te =  (TextView) act.findViewById(resId);
-		assert(te == null);
 		
 		if (te != null) {
 			return te.getText().toString();
@@ -62,10 +72,17 @@ public class Util {
 	
 	public static void setEditText(Activity act, int resId, String str) {
 		TextView te =  (TextView) act.findViewById(resId);
-		assert(te == null);
 		
 		if (te != null) {
 			te.setText(str);
+		}
+	}
+	
+	public static void copyStream(InputStream in, OutputStream out) throws IOException {
+		byte[] buf = new byte[1024];
+		int read;
+		while ((read = in.read(buf)) != -1) {
+			out.write(buf, 0, read);
 		}
 	}
 

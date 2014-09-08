@@ -1,5 +1,5 @@
 /*
- * Copyright 2009 Brian Pellin.
+ * Copyright 2009-2014 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -24,9 +24,12 @@ import java.util.Date;
 import java.util.UUID;
 
 import com.keepassdroid.database.iterator.EntrySearchStringIterator;
+import com.keepassdroid.utils.SprEngine;
 
 public abstract class PwEntry implements Cloneable {
 
+	protected static final String PMS_TAN_ENTRY = "<TAN>";
+	
 	public static class EntryNameComparator implements Comparator<PwEntry> {
 
 		public int compare(PwEntry object1, PwEntry object2) {
@@ -35,10 +38,26 @@ public abstract class PwEntry implements Cloneable {
 		
 	}
 	
-	public PwIconStandard icon;
+	public PwIconStandard icon = PwIconStandard.FIRST;
 
 	public PwEntry() {
 		
+	}
+	
+	public static PwEntry getInstance(PwGroup parent) {
+		return PwEntry.getInstance(parent, true, true);
+	}
+	
+	public static PwEntry getInstance(PwGroup parent, boolean initId, boolean initDates) {
+		if (parent instanceof PwGroupV3) {
+			return new PwEntryV3((PwGroupV3)parent);
+		}
+		else if (parent instanceof PwGroupV4) {
+			return new PwEntryV4((PwGroupV4)parent);
+		}
+		else {
+			throw new RuntimeException("Unknow PwGroup instance.");
+		}
 	}
 	
 	@Override
@@ -54,31 +73,77 @@ public abstract class PwEntry implements Cloneable {
 		return newEntry;
 	}
 	
+	public PwEntry clone(boolean deepStrings) {
+		return (PwEntry) clone();
+	}
+	
 	public void assign(PwEntry source) {
 		icon = source.icon;
 	}
 	
-	public abstract void stampLastAccess();
-
 	public abstract UUID getUUID();
 	public abstract void setUUID(UUID u);
-	public abstract String getTitle();
-	public abstract String getUsername();
-	public abstract String getPassword();
-	public abstract String getUrl();
-	public abstract String getNotes();
-	public abstract Date getCreate();
-	public abstract Date getMod();
-	public abstract Date getAccess();
-	public abstract Date getExpire();
+	
+	public String getTitle() {
+		return getTitle(false, null);
+	}
+	
+	public String getUsername() {
+		return getUsername(false, null);
+	}
+
+	public String getPassword() {
+		return getPassword(false, null);
+	}
+	
+	public String getUrl() {
+		return getUrl(false, null);
+	}
+
+	public String getNotes() {
+		return getNotes(false, null);
+	}
+
+	public abstract String getTitle(boolean decodeRef, PwDatabase db);
+	public abstract String getUsername(boolean decodeRef, PwDatabase db);
+	public abstract String getPassword(boolean decodeRef, PwDatabase db);
+	public abstract String getUrl(boolean decodeRef, PwDatabase db);
+	public abstract String getNotes(boolean decodeRef, PwDatabase db);
+	public abstract Date getCreationTime();
+	public abstract Date getLastModificationTime();
+	public abstract Date getLastAccessTime();
+	public abstract Date getExpiryTime();
 	public abstract boolean expires();
 	public abstract PwGroup getParent();
+	
+	public abstract void setTitle(String title, PwDatabase db);
+	public abstract void setUsername(String user, PwDatabase db);
+	public abstract void setPassword(String pass, PwDatabase db);
+	public abstract void setUrl(String url, PwDatabase db);
+	public abstract void setNotes(String notes, PwDatabase db);
+	public abstract void setCreationTime(Date create);
+	public abstract void setLastModificationTime(Date mod);
+	public abstract void setLastAccessTime(Date access);
+	public abstract void setExpires(boolean exp);
+	public abstract void setExpiryTime(Date expires);
+	
 	
 	public PwIcon getIcon() {
 		return icon;
 	}
+	
+	public boolean isTan() {
+		return getTitle().equals(PMS_TAN_ENTRY) && (getUsername().length() > 0);
+	}
 
-	public abstract String getDisplayTitle();
+	public String getDisplayTitle() {
+		if ( isTan() ) {
+			return PMS_TAN_ENTRY + " " + getUsername();
+		} else {
+			return getTitle();
+		}
+	}
+
 
 	public boolean isMetaStream() {
 		return false;
@@ -86,6 +151,29 @@ public abstract class PwEntry implements Cloneable {
 	
 	public EntrySearchStringIterator stringIterator() {
 		return EntrySearchStringIterator.getInstance(this);
+	}
+	
+	public void touch(boolean modified, boolean touchParents) {
+		Date now = new Date();
+		
+		setLastAccessTime(now);
+		
+		if (modified) {
+			setLastModificationTime(now);
+		}
+		
+		PwGroup parent = getParent();
+		if (touchParents && parent != null) {
+			parent.touch(modified, true);
+		}
+	}
+	
+	public void touchLocation() { }
+	
+	public abstract void setParent(PwGroup parent);
+	
+	public boolean isSearchingEnabled() {
+		return false;
 	}
 
 }

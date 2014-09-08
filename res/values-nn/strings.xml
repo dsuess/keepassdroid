@@ -6,7 +6,7 @@
 
   KeePassDroid is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
+  the Free Software Foundation, either version 2 of the License, or
   (at your option) any later version.
 
   KeePassDroid is distributed in the hope that it will be useful,
@@ -20,7 +20,6 @@
 <resources>
     <string name="about_feedback">Tilbakemelding:</string>
     <string name="about_homepage">Heimeside:</string>
-    <string name="about_ok">OK</string>
     <string name="AboutText">KeePassDroid er ei android-utgåve av KeePass passordstyrar.</string>
     <string name="about_twitter">Twitter:</string>
     <string name="accept">Godta</string>    
@@ -51,7 +50,7 @@
     <string name="decrypting_entry">Dekrypterer oppføringa</string>
     <string name="default_checkbox">Standarddatabasen</string>
     <string name="digits">Tal</string>
-    <string name="disclaimer_formal">KeePassDroid Copyright 2009-2011 Brian Pellin kjem med INGEN SOM HELST GARANTI. Dette er eit fritt program. Du er velkomen til å redistribuera det i samsvar med vilkåra til GPL utgåve 2 eller nyare.</string>
+    <string name="disclaimer_formal">KeePassDroid Copyright 2009&#8211;2012 Brian Pellin kjem med INGEN SOM HELST GARANTI. Dette er eit fritt program. Du er velkomen til å redistribuera det i samsvar med vilkåra til GPL utgåve 2 eller nyare.</string>
     <string name="ellipsis">\u2026</string>
     <string name="enter_filename">Skriv filnamnet til databasen:</string>
     <string name="entry_accessed">Brukt: </string>
@@ -98,6 +97,7 @@
     <string name="hint_group_name">Gruppenamn</string>
     <string name="hint_keyfile">nøkkelfil</string>
     <string name="hint_length">lengd</string>
+    <string name="hint_login_pass">Passord</string>
     <string name="hint_pass">passord</string>
     <string name="hint_title">namn</string>
     <string name="hint_url">adresse</string>
@@ -140,7 +140,6 @@
     <string name="omitbackup_title">Søk ikkje i kopipostane eller søppelbøtta</string>
     <string name="omitbackup_summary">Søkjeresultatet inneheld ikkje oppføringar frå \'Backup\' eller søppelbøtta</string>
     <string name="pass_filename">Filnamnet til KeePass-databasen:</string>
-    <string name="pass_ok">OK</string>
     <string name="password_title">Skriv databasepassordet</string>
     <string name="progress_create">Lager ny database …</string>
     <string name="progress_title">Arbeider …</string>

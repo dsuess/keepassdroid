@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2011 Brian Pellin.
+ * Copyright 2010-2012 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -21,6 +21,9 @@ package com.keepassdroid.database;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 import com.keepassdroid.database.exception.InvalidDBVersionException;
 import com.keepassdroid.stream.LEDataInputStream;
@@ -31,11 +34,10 @@ public class PwDbHeaderV4 extends PwDbHeader {
     public static final int DBSIG_2               = 0xB54BFB67;
     
     private static final int FILE_VERSION_CRITICAL_MASK = 0xFFFF0000;
-    private static final int FILE_VERSION_32 =            0x02010100;
+    public static final int FILE_VERSION_32 =             0x00030001;
     
-    private class PwDbHeaderV4Fields {
+    public class PwDbHeaderV4Fields {
         public static final byte EndOfHeader = 0;
-        @SuppressWarnings("unused")
 		public static final byte Comment = 1;
         public static final byte CipherID = 2;
         public static final byte CompressionFlags = 3;
@@ -50,12 +52,14 @@ public class PwDbHeaderV4 extends PwDbHeader {
     }
     
     private PwDatabaseV4 db;
-    public byte[] protectedStreamKey;
-    public byte[] streamStartBytes;
+    public byte[] protectedStreamKey = new byte[32];
+    public byte[] streamStartBytes = new byte[32];
     public CrsAlgorithm innerRandomStream;
 
     public PwDbHeaderV4(PwDatabaseV4 d) {
     	db = d;
+    	
+    	masterSeed = new byte[32];
     }
 
 	/** Assumes the input stream is at the beginning of the .kdbx file
@@ -63,31 +67,41 @@ public class PwDbHeaderV4 extends PwDbHeader {
 	 * @throws IOException 
 	 * @throws InvalidDBVersionException 
 	 */
-	public void loadFromFile(InputStream is) throws IOException, InvalidDBVersionException {
-		LEDataInputStream dis = new LEDataInputStream(is);
+	public byte[] loadFromFile(InputStream is) throws IOException, InvalidDBVersionException {
+		MessageDigest md;
+		try {
+			md = MessageDigest.getInstance("SHA-256");
+		} catch (NoSuchAlgorithmException e) {
+			throw new IOException("No SHA-256 implementation");
+		}
+		
+		DigestInputStream dis = new DigestInputStream(is, md);
+		LEDataInputStream lis = new LEDataInputStream(dis);
 
-		int sig1 = dis.readInt();
-		int sig2 = dis.readInt();
+		int sig1 = lis.readInt();
+		int sig2 = lis.readInt();
 		
 		if ( ! matchesHeader(sig1, sig2) ) {
 			throw new InvalidDBVersionException();
 		}
 		
-		long version = dis.readUInt();
+		long version = lis.readUInt();
 		if ( ! validVersion(version) ) {
 			throw new InvalidDBVersionException();
 		}
 		
 		boolean done = false;
 		while ( ! done ) {
-			done = readHeaderField(dis);
+			done = readHeaderField(lis);
 		}
+		
+		return md.digest();
 	}
 	
 	private boolean readHeaderField(LEDataInputStream dis) throws IOException {
 		byte fieldID = (byte) dis.read();
 		
-		int fieldSize = dis.readShort();
+		int fieldSize = dis.readUShort();
 		
 		byte[] fieldData = null;
 		if ( fieldSize > 0 ) {

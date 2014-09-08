@@ -1,11 +1,11 @@
 /*
-* Copyright 2009-2011 Brian Pellin.
+* Copyright 2009-2014 Brian Pellin.
 *
 * This file is part of KeePassDroid.
 *
 * KeePassDroid is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
-* the Free Software Foundation, either version 3 of the License, or
+* the Free Software Foundation, either version 2 of the License, or
 * (at your option) any later version.
 *
 * KeePassDroid is distributed in the hope that it will be useful,
@@ -29,21 +29,21 @@ import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
-
 import android.content.res.AssetManager;
 import android.test.AndroidTestCase;
 
-import com.keepassdroid.database.PwDatabaseV3;
+import com.keepassdroid.database.PwDatabaseV3Debug;
 import com.keepassdroid.database.PwDbHeader;
 import com.keepassdroid.database.PwDbHeaderV3;
 import com.keepassdroid.database.exception.PwDbOutputException;
 import com.keepassdroid.database.save.PwDbHeaderOutputV3;
 import com.keepassdroid.database.save.PwDbV3Output;
+import com.keepassdroid.database.save.PwDbV3OutputDebug;
 import com.keepassdroid.stream.NullOutputStream;
 import com.keepassdroid.tests.database.TestData;
  
 public class PwManagerOutputTest extends AndroidTestCase {
-  PwDatabaseV3 mPM;
+  PwDatabaseV3Debug mPM;
   
   @Override
   protected void setUp() throws Exception {
@@ -55,7 +55,7 @@ public class PwManagerOutputTest extends AndroidTestCase {
   public void testPlainContent() throws IOException, PwDbOutputException {
     ByteArrayOutputStream bos = new ByteArrayOutputStream();
  
-    PwDbV3Output pos = new PwDbV3Output(mPM, bos, PwDbV3Output.DEBUG);
+    PwDbV3Output pos = new PwDbV3OutputDebug(mPM, bos, true);
     pos.outputPlanGroupAndEntries(bos);
     
     assertTrue("No output", bos.toByteArray().length > 0);
@@ -70,7 +70,7 @@ public class PwManagerOutputTest extends AndroidTestCase {
     
     DigestOutputStream dos = new DigestOutputStream(nos, md);
   
-    PwDbV3Output pos = new PwDbV3Output(mPM, dos, PwDbV3Output.DEBUG);
+    PwDbV3Output pos = new PwDbV3OutputDebug(mPM, dos, true);
     pos.outputPlanGroupAndEntries(dos);
     dos.close();
     
@@ -95,7 +95,7 @@ public class PwManagerOutputTest extends AndroidTestCase {
   
   public void testHeader() throws PwDbOutputException, IOException {
 	ByteArrayOutputStream bActual = new ByteArrayOutputStream();
-    PwDbV3Output pActual = new PwDbV3Output(mPM, bActual, PwDbV3Output.DEBUG);
+    PwDbV3Output pActual = new PwDbV3OutputDebug(mPM, bActual, true);
     PwDbHeaderV3 header = pActual.outputHeader(bActual);
     
     ByteArrayOutputStream bExpected = new ByteArrayOutputStream();
@@ -109,7 +109,7 @@ public class PwManagerOutputTest extends AndroidTestCase {
   
   public void testFinalKey() throws PwDbOutputException {
 	ByteArrayOutputStream bActual = new ByteArrayOutputStream();
-    PwDbV3Output pActual = new PwDbV3Output(mPM, bActual, PwDbV3Output.DEBUG);
+    PwDbV3Output pActual = new PwDbV3OutputDebug(mPM, bActual, true);
     PwDbHeader hActual = pActual.outputHeader(bActual);
     byte[] finalKey = pActual.getFinalKey(hActual);
     
@@ -132,7 +132,7 @@ public class PwManagerOutputTest extends AndroidTestCase {
 	}
 	
 	ByteArrayOutputStream bActual = new ByteArrayOutputStream();
-	PwDbV3Output pActual = new PwDbV3Output(mPM, bActual, PwDbV3Output.DEBUG);
+	PwDbV3Output pActual = new PwDbV3OutputDebug(mPM, bActual, true);
 	pActual.output();
 	//pActual.close();
 

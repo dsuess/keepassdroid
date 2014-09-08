@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2011 Brian Pellin.
+ * Copyright 2009-2014 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -26,20 +26,26 @@ import java.util.TimerTask;
 import java.util.UUID;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.preference.PreferenceManager;
+import android.text.SpannableString;
+import android.text.method.LinkMovementMethod;
 import android.text.method.PasswordTransformationMethod;
+import android.text.util.Linkify;
 import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
@@ -50,9 +56,13 @@ import android.widget.Toast;
 import com.android.keepass.KeePass;
 import com.android.keepass.R;
 import com.keepassdroid.app.App;
+import com.keepassdroid.compat.ActivityCompat;
+import com.keepassdroid.database.PwDatabase;
 import com.keepassdroid.database.PwEntry;
 import com.keepassdroid.database.PwEntryV4;
+import com.keepassdroid.database.exception.SamsungClipboardException;
 import com.keepassdroid.intents.Intents;
+import com.keepassdroid.utils.EmptyUtils;
 import com.keepassdroid.utils.Types;
 import com.keepassdroid.utils.Util;
 
@@ -60,13 +70,6 @@ public class EntryActivity extends LockCloseActivity {
 	public static final String KEY_ENTRY = "entry";
 	public static final String KEY_REFRESH_POS = "refresh_pos";
 
-	private static final int MENU_DONATE = Menu.FIRST;
-	private static final int MENU_PASS = Menu.FIRST + 1;
-	private static final int MENU_GOTO_URL = Menu.FIRST + 2;
-	private static final int MENU_COPY_USER = Menu.FIRST + 3;
-	private static final int MENU_COPY_PASS = Menu.FIRST + 4;
-	private static final int MENU_LOCK = Menu.FIRST + 5; 
-	
 	public static final int NOTIFY_USERNAME = 1;
 	public static final int NOTIFY_PASSWORD = 2;
 	
@@ -91,6 +94,7 @@ public class EntryActivity extends LockCloseActivity {
 	private int mPos;
 	private NotificationManager mNM;
 	private BroadcastReceiver mIntentReceiver;
+	protected boolean readOnly = false;
 	
 	private DateFormat dateFormat;
 	private DateFormat timeFormat;
@@ -109,10 +113,19 @@ public class EntryActivity extends LockCloseActivity {
 			
 		});
 		
+		if (readOnly) {
+			edit.setVisibility(View.GONE);
+			
+			View divider = findViewById(R.id.entry_divider2);
+			divider.setVisibility(View.GONE);
+		}
 	}
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
+		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+		mShowPassword = ! prefs.getBoolean(getString(R.string.maskpass_key), getResources().getBoolean(R.bool.maskpass_default));
+		
 		super.onCreate(savedInstanceState);
 		setEntryView();
 		
@@ -126,6 +139,7 @@ public class EntryActivity extends LockCloseActivity {
 			finish();
 			return;
 		}
+		readOnly = db.readOnly;
 
 		setResult(KeePass.EXIT_NORMAL);
 
@@ -134,14 +148,20 @@ public class EntryActivity extends LockCloseActivity {
 		mPos = i.getIntExtra(KEY_REFRESH_POS, -1);
 		assert(uuid != null);
 		
-		mEntry = db.entries.get(uuid);
+		mEntry = db.pm.entries.get(uuid);
+		if (mEntry == null) {
+			Toast.makeText(this, R.string.entry_not_found, Toast.LENGTH_LONG).show();
+			finish();
+			return;
+		}
+		
+		// Refresh Menu contents in case onCreateMenuOptions was called before mEntry was set
+		ActivityCompat.invalidateOptionsMenu(this);
 		
 		// Update last access time.
-		mEntry.stampLastAccess();
+		mEntry.touch(false, false);
 		
-		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-		mShowPassword = ! prefs.getBoolean(getString(R.string.maskpass_key), getResources().getBoolean(R.bool.maskpass_default));
-		fillData();
+		fillData(false);
 
 		setupEditButtons();
 		
@@ -217,28 +237,31 @@ public class EntryActivity extends LockCloseActivity {
 		
 	}
 	
-	protected void fillData() {
+	protected void fillData(boolean trimList) {
 		ImageView iv = (ImageView) findViewById(R.id.entry_icon);
-		App.getDB().drawFactory.assignDrawableTo(iv, getResources(), mEntry.getIcon());
-
-		populateText(R.id.entry_title, mEntry.getTitle());
-		populateText(R.id.entry_user_name, mEntry.getUsername());
+		Database db = App.getDB();
+		db.drawFactory.assignDrawableTo(iv, getResources(), mEntry.getIcon());
 		
-		populateText(R.id.entry_url, mEntry.getUrl());
-		populateText(R.id.entry_password, mEntry.getPassword());
+		PwDatabase pm = db.pm;
+
+		populateText(R.id.entry_title, mEntry.getTitle(true, pm));
+		populateText(R.id.entry_user_name, mEntry.getUsername(true, pm));
+		
+		populateText(R.id.entry_url, mEntry.getUrl(true, pm));
+		populateText(R.id.entry_password, mEntry.getPassword(true, pm));
 		setPasswordStyle();
 		
-		populateText(R.id.entry_created, getDateTime(mEntry.getCreate()));
-		populateText(R.id.entry_modified, getDateTime(mEntry.getMod()));
-		populateText(R.id.entry_accessed, getDateTime(mEntry.getAccess()));
+		populateText(R.id.entry_created, getDateTime(mEntry.getCreationTime()));
+		populateText(R.id.entry_modified, getDateTime(mEntry.getLastModificationTime()));
+		populateText(R.id.entry_accessed, getDateTime(mEntry.getLastAccessTime()));
 		
-		Date expires = mEntry.getExpire();
+		Date expires = mEntry.getExpiryTime();
 		if ( mEntry.expires() ) {
 			populateText(R.id.entry_expires, getDateTime(expires));
 		} else {
 			populateText(R.id.entry_expires, R.string.never);
 		}
-		populateText(R.id.entry_comment, mEntry.getNotes());
+		populateText(R.id.entry_comment, mEntry.getNotes(true, pm));
 
 	}
 	
@@ -256,7 +279,7 @@ public class EntryActivity extends LockCloseActivity {
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 		super.onActivityResult(requestCode, resultCode, data);
 		if ( resultCode == KeePass.EXIT_REFRESH || resultCode == KeePass.EXIT_REFRESH_TITLE ) {
-			fillData();
+			fillData(true);
 			if ( resultCode == KeePass.EXIT_REFRESH_TITLE ) {
 				Intent ret = new Intent();
 				ret.putExtra(KEY_REFRESH_POS, mPos);
@@ -269,36 +292,42 @@ public class EntryActivity extends LockCloseActivity {
 	public boolean onCreateOptionsMenu(Menu menu) {
 		super.onCreateOptionsMenu(menu);
 		
-		menu.add(0, MENU_DONATE, 0, R.string.menu_donate);
-		menu.findItem(MENU_DONATE).setIcon(android.R.drawable.ic_menu_share);
+		MenuInflater inflater = getMenuInflater();
+		inflater.inflate(R.menu.entry, menu);
 		
+		MenuItem togglePassword = menu.findItem(R.id.menu_toggle_pass);
 		if ( mShowPassword ) {
-			menu.add(0, MENU_PASS, 0, R.string.menu_hide_password);
+			togglePassword.setTitle(R.string.menu_hide_password);
 		} else {
-			menu.add(0, MENU_PASS, 0, R.string.show_password);
+			togglePassword.setTitle(R.string.show_password);
 		}
-		menu.findItem(MENU_PASS).setIcon(android.R.drawable.ic_menu_view);
-		menu.add(0, MENU_GOTO_URL, 0, R.string.menu_url);
-		menu.findItem(MENU_GOTO_URL).setIcon(android.R.drawable.ic_menu_upload);
 		
-		if ( mEntry.getUrl().length() == 0 ) {
-			// disable button if url is not available
-			menu.findItem(MENU_GOTO_URL).setEnabled(false);
+		MenuItem gotoUrl = menu.findItem(R.id.menu_goto_url);
+		MenuItem copyUser = menu.findItem(R.id.menu_copy_user);
+		MenuItem copyPass = menu.findItem(R.id.menu_copy_pass);
+		
+		// In API >= 11 onCreateOptionsMenu may be called before onCreate completes
+		// so mEntry may not be set
+		if (mEntry == null) {
+			gotoUrl.setVisible(false);
+			copyUser.setVisible(false);
+			copyPass.setVisible(false);
 		}
-		menu.add(0, MENU_COPY_USER, 0, R.string.menu_copy_user);
-		menu.findItem(MENU_COPY_USER).setIcon(android.R.drawable.ic_menu_set_as);
-		if ( mEntry.getUsername().length() == 0 ) {
-			// disable button if username is not available
-			menu.findItem(MENU_COPY_USER).setEnabled(false);
+		else {
+			String url = mEntry.getUrl();
+			if (EmptyUtils.isNullOrEmpty(url)) {
+				// disable button if url is not available
+				gotoUrl.setVisible(false);
+			}
+			if ( mEntry.getUsername().length() == 0 ) {
+				// disable button if username is not available
+				copyUser.setVisible(false);
+			}
+			if ( mEntry.getPassword().length() == 0 ) {
+				// disable button if password is not available
+				copyPass.setVisible(false);
+			}
 		}
-		menu.add(0, MENU_COPY_PASS, 0, R.string.menu_copy_pass);
-		menu.findItem(MENU_COPY_PASS).setIcon(android.R.drawable.ic_menu_agenda);
-		if ( mEntry.getPassword().length() == 0 ) {
-			// disable button if password is not available
-			menu.findItem(MENU_COPY_PASS).setEnabled(false);
-		}
-		menu.add(0, MENU_LOCK, 0, R.string.menu_lock);
-		menu.findItem(MENU_LOCK).setIcon(android.R.drawable.ic_lock_lock);
 		
 		return true;
 	}
@@ -316,7 +345,7 @@ public class EntryActivity extends LockCloseActivity {
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch ( item.getItemId() ) {
-		case MENU_DONATE:
+		case R.id.menu_donate:
 			try {
 				Util.gotoUrl(this, R.string.donate_url);
 			} catch (ActivityNotFoundException e) {
@@ -325,7 +354,7 @@ public class EntryActivity extends LockCloseActivity {
 			}
 			
 			return true;
-		case MENU_PASS:
+		case R.id.menu_toggle_pass:
 			if ( mShowPassword ) {
 				item.setTitle(R.string.show_password);
 				mShowPassword = false;
@@ -337,7 +366,7 @@ public class EntryActivity extends LockCloseActivity {
 
 			return true;
 			
-		case MENU_GOTO_URL:
+		case R.id.menu_goto_url:
 			String url;
 			url = mEntry.getUrl();
 			
@@ -353,15 +382,15 @@ public class EntryActivity extends LockCloseActivity {
 			}
 			return true;
 			
-		case MENU_COPY_USER:
-			timeoutCopyToClipboard(mEntry.getUsername());
+		case R.id.menu_copy_user:
+			timeoutCopyToClipboard(mEntry.getUsername(true, App.getDB().pm));
 			return true;
 			
-		case MENU_COPY_PASS:
-			timeoutCopyToClipboard(new String(mEntry.getPassword()));
+		case R.id.menu_copy_pass:
+			timeoutCopyToClipboard(new String(mEntry.getPassword(true, App.getDB().pm)));
 			return true;
 			
-		case MENU_LOCK:
+		case R.id.menu_lock:
 			App.setShutdown();
 			setResult(KeePass.EXIT_LOCK);
 			finish();
@@ -372,7 +401,12 @@ public class EntryActivity extends LockCloseActivity {
 	}
 	
 	private void timeoutCopyToClipboard(String text) {
-		Util.copyToClipboard(this, text);
+		try {
+			Util.copyToClipboard(this, text);
+		} catch (SamsungClipboardException e) {
+			showSamsungDialog();
+			return;
+		}
 		
 		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
 		String sClipClear = prefs.getString(getString(R.string.clipboard_timeout_key), getString(R.string.clipboard_timeout_default));
@@ -404,9 +438,35 @@ public class EntryActivity extends LockCloseActivity {
 			String currentClip = Util.getClipboard(mCtx);
 			
 			if ( currentClip.equals(mClearText) ) {
-				Util.copyToClipboard(mCtx, "");
-				uiThreadCallback.post(new UIToastTask(mCtx, R.string.ClearClipboard));
+				try {
+					Util.copyToClipboard(mCtx, "");
+					uiThreadCallback.post(new UIToastTask(mCtx, R.string.ClearClipboard));
+				} catch (SamsungClipboardException e) {
+					uiThreadCallback.post(new UIToastTask(mCtx, R.string.clipboard_error_clear));
+				}
 			}
 		}
+	}
+	
+	private void showSamsungDialog() {
+		String text = getString(R.string.clipboard_error).concat(System.getProperty("line.separator")).concat(getString(R.string.clipboard_error_url));
+		SpannableString s = new SpannableString(text);
+		TextView tv = new TextView(this);
+		tv.setText(s);
+		tv.setAutoLinkMask(RESULT_OK);
+		tv.setMovementMethod(LinkMovementMethod.getInstance());
+		Linkify.addLinks(s, Linkify.WEB_URLS);
+		
+		AlertDialog.Builder builder = new AlertDialog.Builder(this);
+		builder.setTitle(R.string.clipboard_error_title)
+			.setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+				@Override
+				public void onClick(DialogInterface dialog, int which) {
+					dialog.dismiss();
+				}
+			})
+			.setView(tv)
+			.show();
+		
 	}
 }

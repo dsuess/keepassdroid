@@ -1,5 +1,5 @@
 /*
- * Copyright 2009 Brian Pellin.
+ * Copyright 2009-2013 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -22,9 +22,6 @@ package com.keepassdroid.database;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
-
-
-import android.util.Log;
 
 import com.keepassdroid.app.App;
 import com.keepassdroid.utils.Types;
@@ -129,8 +126,8 @@ public class PwDate implements Cloneable {
 			time = Calendar.getInstance();
 		}
 		// File format is a 1 based month, java Calendar uses a zero based month
-		// File format is a 0 based day, java Calendar uses a 1 based day
-		time.set(year, month - 1, day + 1, hour, minute, second);
+		// File format is a 1 based day, java Calendar uses a 1 based day
+		time.set(year, month - 1, day, hour, minute, second);
 
 		return time.getTime();
 

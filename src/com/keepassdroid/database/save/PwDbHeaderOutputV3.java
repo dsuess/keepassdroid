@@ -1,5 +1,5 @@
 /*
- * Copyright 2009 Brian Pellin.
+ * Copyright 2009-2014 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -24,7 +24,7 @@ import java.io.OutputStream;
 
 
 import com.keepassdroid.database.PwDbHeaderV3;
-import com.keepassdroid.utils.Types;
+import com.keepassdroid.stream.LEDataOutputStream;
 
 public class PwDbHeaderOutputV3 {
 	private PwDbHeaderV3 mHeader;
@@ -35,19 +35,30 @@ public class PwDbHeaderOutputV3 {
 		mOS = os;
 	}
 	
-	public void output() throws IOException {
-		mOS.write(Types.writeInt(mHeader.signature1));
-		mOS.write(Types.writeInt(mHeader.signature2));
-		mOS.write(Types.writeInt(mHeader.flags));
-		mOS.write(Types.writeInt(mHeader.version));
+	public void outputStart() throws IOException {
+		mOS.write(LEDataOutputStream.writeIntBuf(mHeader.signature1));
+		mOS.write(LEDataOutputStream.writeIntBuf(mHeader.signature2));
+		mOS.write(LEDataOutputStream.writeIntBuf(mHeader.flags));
+		mOS.write(LEDataOutputStream.writeIntBuf(mHeader.version));
 		mOS.write(mHeader.masterSeed);
 		mOS.write(mHeader.encryptionIV);
-		mOS.write(Types.writeInt(mHeader.numGroups));
-		mOS.write(Types.writeInt(mHeader.numEntries));
+		mOS.write(LEDataOutputStream.writeIntBuf(mHeader.numGroups));
+		mOS.write(LEDataOutputStream.writeIntBuf(mHeader.numEntries));
+	}
+	
+	public void outputContentHash() throws IOException {
 		mOS.write(mHeader.contentsHash);
+	}
+	
+	public void outputEnd() throws IOException {
 		mOS.write(mHeader.transformSeed);
-		mOS.write(Types.writeInt(mHeader.numKeyEncRounds));
-		
+		mOS.write(LEDataOutputStream.writeIntBuf(mHeader.numKeyEncRounds));
+	}
+	
+	public void output() throws IOException {
+		outputStart();
+		outputContentHash();
+		outputEnd();
 	}
 	
 	public void close() throws IOException {

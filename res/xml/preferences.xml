@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
- Copyright 2009-2011 Brian Pellin.
+ Copyright 2009-2013 Brian Pellin.
      
  This file is part of KeePassDroid.
 
   KeePassDroid is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
+  the Free Software Foundation, either version 2 of the License, or
   (at your option) any later version.
 
   KeePassDroid is distributed in the hope that it will be useful,
@@ -39,10 +39,16 @@
 	  android:key="@string/app_key"
 	  android:title="@string/application"
 	  android:summary="@string/application_settings">
+		<CheckBoxPreference 
+		  android:summary="@string/recentfile_summary" 
+		  android:defaultValue="@bool/recentfile_default" 
+		  android:title="@string/recentfile_title" 
+		  android:key="@string/recentfile_key"/>
 		<CheckBoxPreference
 			android:key="@string/keyfile_key"
 			android:title="@string/remember_keyfile_title"
 			android:summary="@string/remember_keyfile_summary"
+			android:dependency="@string/recentfile_key"
 			android:defaultValue="@bool/keyfile_default"/>
 		<ListPreference
 		  android:key="@string/clipboard_timeout_key"

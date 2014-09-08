@@ -1,4 +1,164 @@
-KeePassdroid (1.9.8)
+ * Fix download URLs
+ * Add Hebrew translations from Arthur Zamarin
+
+KeePassDroid (1.99.11)
+ * Add support for decoding field references (closes: #247)
+ * Remove bad asserts (closes: #606)
+ * Add Latvian translations from Raimonds
+ * Add Basque translations from dgarciabad
+ * Polish transalation fix
+ * Responsiveness improvements
+ * Better support for read-only database files
+ * Output header hash for .kdb files
+
+KeePassDroid (1.99.10)
+ * Fix crashes on SELinux enabled devices
+
+KeePassDroid (1.99.9)
+ * Fix crashes on some Android 4.3 and x86 devices
+
+KeePassDroid (1.99.8)
+ * Fix crash in filename lookup
+ * Implement SecureRandom workaround
+
+KeePassDroid (1.99.7.2)
+ * Even better fix for recent file history
+ 
+KeePassDroid (1.99.7.1)
+ * Fix Force Close when recent file history is disabled (closes: #539)
+
+KeePassDroid (1.99.7)
+ * Don't require OI Filemanager before checking for another file manager
+ * Fix issues with file history (closes: #526)
+ * Updated Russian translations from I Nedoboy (closes: #524)
+ * Updated Finnish translations Mika Takala
+
+KeePassDroid (1.99.6)
+ * Fix off by one error on .kdb dates (closes: #518)
+ * Updated Russian translations from I Nedoboy (closes: #517)
+ * Use Sharedpreference to store recent files instead of sqlite dbs.
+   I see too many hard to explain crashes coming from the recent file
+   history dbs.
+ * Add setting to control remembering recent files list (closes: #444)
+ * Add new intents to auto-launch database with password
+ * Enable password changes on .kdbx
+
+KeePassdDroid (1.99.5)
+ * Support more generic file picker intents
+ * Better search implementation (respects .kdbx group search setting)
+ * Allow deleting .kdbx entries
+ * Fix some crashes
+ * Update Finnish translations.
+ * Update Hungarian translations
+
+KeePassDroid (1.99.4)
+ * New Swedish translation from Niclas Burgren
+ * Allow adding entries to .kdbx root group (closes: #490)
+ * Fix .kdb icon corruption bug (leads to KeePassX segfault)
+   (closes: #492)
+
+KeePassDroid (1.99.3)
+ * Updated German translations from Meviox
+ * Add Finnish translations from Mika Takala
+ * Add workaround for broken HTC Linkify
+ * Fix .kdbx max items field
+ * Fix compressed binary corruption (closes: #486)
+
+KeePassDroid (1.99.2)
+ * Fix crash on entries without icons set (closes: #484) 
+ * Prevent crash and show warning for Samsung clipboard error
+   (closes: #436)
+
+KeePassDroid (1.99.1)
+ * Add support for editing advanced strings in .kdbx files
+ * Add ability to create new groups in .kdbx files
+ * Password generator improvements from Dirk Bergstrom
+ * Add support for adding new entries and editing entries in .kdbx files
+   (closes: #144)
+ * Update Catalan translations (closes: #445)
+ * Trim whitespace from queries from josefwells (closes: #467)
+ * Updated French transaltions from Nam
+
+KeePassDroid (1.9.18.3)
+ * Restore the timeout service, we need it to keep the app in memory long
+   enough to clear the clipboard and to remove the notifications.
+ * Autolink comment and advanced fields
+ * i18n more database error strings
+ * Updated Russian translations from I Nedoboy
+ * New Catalan translations from Oriol Garrote
+ * Remove eye icon on Android >3.0 devices
+ * Fix logic for when to display the words Show Password vs. Hide Password
+
+KeePassDroid (1.9.18.2)
+ * Updated Dutch translations from Erik Jan Meijer
+ * Updated Russian translations from I Nedoboy
+ * Add Danish translations from Frederik Svarre
+
+KeePassDroid (1.9.18.1)
+ * Fix crash with blank icons
+
+KeePassDroid (1.9.18)
+ * Add input types to entry fields
+ * Show username in the title list for TAN entries
+ * Switch to monospace font for password fields
+ * Implement action bar on entry edit activity
+ * Updated Russian translations from I Nedoboy
+
+KeePassDroid (1.9.17)
+ * Updated Russian translations from I Nedoboy
+ * New Spanish translations from jipanos
+ * New Dutch translations Erik Fdevriendt
+ * Fix header verification in .kdbx
+ * Rework timeout implementation should fix some bugs with passwords persisting
+
+KeePassDroid (1.9.16)
+ * Updated Hungarian translations from intel
+ * Updated German translations from rvs2008
+
+KeePassDroid (1.9.15)
+ * Fix compatibility with desktop KeePass 2.20
+ * Verify header integrity of .kdbx databases
+
+KeePassDroid (1.9.14)
+ * Resolve crashes when switch back to the entry view
+ * Start making use of action bar on devices with Android >= 3.0
+ * Updated Russian translations from I Nedoboy
+ * Fix Czech translations
+
+KeePassDroid (1.9.13)
+ * Allow keys with 0 encryption rounds
+ * Czech translations from H Vanek
+ * Updated Russian translations from I Nedoboy
+ * Clarify text on notification pop-ups
+ * Fix text selection in entries on devices with Android >= 3.0
+
+KeePassDroid (1.9.12.1)
+ * Add title bar on Honeycomb+ devices, so ... menu is always available
+
+KeePassDroid (1.9.11)
+ * Protect against crashes when clicking on the browse icon
+ * Add Hungarian translations from intel
+
+KeePassDroid (1.9.10)
+ * Add support for the Holo theme on devices > 3.0 from Space Cowboy
+ * Add Ukranian translations from andriykopanytsia
+ * Add Portugese translations from Carlos Schlyter
+ * Japanese translation corrections from Matsuu Takuto
+ * Fix x86 key generation compatibility
+ * Add 2 thread support to key generation for dual core devices from 
+     Mike Mohr
+ * Use memory more efficiently in main group view. Prevent out of memory
+   crashes when scrolling.
+
+
+KeePassDroid (1.9.9)
+ * Go back to explicitly storing blank fields in the database
+   (works around bug in keepassx)
+ * Add support for native code on MIPS architectures
+ * Adding Vibrate permission. On some devices notifications fail
+   without the vibrate permission.
+
+KeePassDroid (1.9.8)
  * Fix crashes related to saving missing entries
  * Fix issues with setting wrong expiry date
 

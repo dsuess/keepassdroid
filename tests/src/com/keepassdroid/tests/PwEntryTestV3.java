@@ -5,7 +5,7 @@
  *
  *  KeePassDroid is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
+ *  the Free Software Foundation, either version 2 of the License, or
  *  (at your option) any later version.
  *
  *  KeePassDroid is distributed in the hope that it will be useful,
@@ -58,6 +58,6 @@ public class PwEntryTestV3 extends AndroidTestCase {
 		
 		assertEquals("Incorrect year.", cal.get(Calendar.YEAR), 2009);
 		assertEquals("Incorrect month.", cal.get(Calendar.MONTH), 3);
-		assertEquals("Incorrect day.", cal.get(Calendar.DAY_OF_MONTH), 24);
+		assertEquals("Incorrect day.", cal.get(Calendar.DAY_OF_MONTH), 23);
 	}
 }

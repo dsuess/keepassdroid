@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2011 Brian Pellin.
+ * Copyright 2009-2012 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -75,6 +75,7 @@ import com.keepassdroid.database.PwDbHeaderV3;
 import com.keepassdroid.database.PwEncryptionAlgorithm;
 import com.keepassdroid.database.PwEntryV3;
 import com.keepassdroid.database.PwGroupV3;
+import com.keepassdroid.database.exception.InvalidAlgorithmException;
 import com.keepassdroid.database.exception.InvalidDBException;
 import com.keepassdroid.database.exception.InvalidDBSignatureException;
 import com.keepassdroid.database.exception.InvalidDBVersionException;
@@ -97,10 +98,9 @@ public class ImporterV3 extends Importer {
 		super();
 	}
 
-	public ImporterV3(boolean debug) {
-		super(debug);
+	protected PwDatabaseV3 createDB() {
+		return new PwDatabaseV3();
 	}
-
 
 	/**
 	 * Load a v3 database file, return contents in a new PwDatabaseV3.
@@ -136,12 +136,13 @@ public class ImporterV3 extends Importer {
 
 
 		// Load entire file, most of it's encrypted.
-		byte[] filebuf = new byte[(int)inStream.available()];
-		inStream.read( filebuf, 0, (int)inStream.available());
+		int fileSize = inStream.available();
+		byte[] filebuf = new byte[fileSize + 16]; // Pad with a blocksize (Twofish uses 128 bits), since Android 4.3 tries to write more to the buffer
+		inStream.read(filebuf, 0, fileSize);
 		inStream.close();
 
 		// Parse header (unencrypted)
-		if( filebuf.length < PwDbHeaderV3.BUF_SIZE )
+		if( fileSize < PwDbHeaderV3.BUF_SIZE )
 			throw new IOException( "File too short for header" );
 		PwDbHeaderV3 hdr = new PwDbHeaderV3();
 		hdr.loadFromFile(filebuf, 0 );
@@ -155,7 +156,7 @@ public class ImporterV3 extends Importer {
 		}
 
 		status.updateMessage(R.string.creating_db_key);
-		newManager = new PwDatabaseV3();
+		newManager = createDB();
 		newManager.setMasterKey( password, keyfile );
 
 		// Select algorithm
@@ -164,14 +165,12 @@ public class ImporterV3 extends Importer {
 		} else if( (hdr.flags & PwDbHeaderV3.FLAG_TWOFISH) != 0 ) {
 			newManager.algorithm = PwEncryptionAlgorithm.Twofish;
 		} else {
-			throw new IOException( "Unknown algorithm." );
+			throw new InvalidAlgorithmException();
 		}
 
-
-		if ( debug ) {
-			newManager.dbHeader = hdr;
-		}
-
+		// Copy for testing
+		newManager.copyHeader(hdr);
+		
 		newManager.numKeyEncRounds = hdr.numKeyEncRounds;
 
 		newManager.name = "KeePass Password Manager";
@@ -208,7 +207,7 @@ public class ImporterV3 extends Importer {
 		// Decrypt! The first bytes aren't encrypted (that's the header)
 		int encryptedPartSize;
 		try {
-			encryptedPartSize = cipher.doFinal(filebuf, PwDbHeaderV3.BUF_SIZE, filebuf.length - PwDbHeaderV3.BUF_SIZE, filebuf, PwDbHeaderV3.BUF_SIZE );
+			encryptedPartSize = cipher.doFinal(filebuf, PwDbHeaderV3.BUF_SIZE, fileSize - PwDbHeaderV3.BUF_SIZE, filebuf, PwDbHeaderV3.BUF_SIZE );
 		} catch (ShortBufferException e1) {
 			throw new IOException("Buffer too short");
 		} catch (IllegalBlockSizeException e1) {
@@ -217,10 +216,8 @@ public class ImporterV3 extends Importer {
 			throw new InvalidPasswordException();
 		}
 
-		if ( debug ) {
-			newManager.postHeader = new byte[encryptedPartSize];
-			System.arraycopy(filebuf, PwDbHeaderV3.BUF_SIZE, newManager.postHeader, 0, encryptedPartSize);
-		}
+		// Copy decrypted data for testing
+		newManager.copyEncrypted(filebuf, PwDbHeaderV3.BUF_SIZE, encryptedPartSize);
 
 		MessageDigest md = null;
 		try {
@@ -245,7 +242,7 @@ public class ImporterV3 extends Importer {
 		int pos = PwDbHeaderV3.BUF_SIZE;
 		PwGroupV3 newGrp = new PwGroupV3();
 		for( int i = 0; i < hdr.numGroups; ) {
-			int fieldType = LEDataInputStream.readShort( filebuf, pos );
+			int fieldType = LEDataInputStream.readUShort( filebuf, pos );
 			pos += 2;
 			int fieldSize = LEDataInputStream.readInt( filebuf, pos );
 			pos += 4;
@@ -267,7 +264,7 @@ public class ImporterV3 extends Importer {
 		// Import all entries
 		PwEntryV3 newEnt = new PwEntryV3();
 		for( int i = 0; i < hdr.numEntries; ) {
-			int fieldType = LEDataInputStream.readShort( filebuf, pos );
+			int fieldType = LEDataInputStream.readUShort( filebuf, pos );
 			int fieldSize = LEDataInputStream.readInt( filebuf, pos + 2 );
 
 			if( fieldType == 0xFFFF ) {
@@ -365,7 +362,7 @@ public class ImporterV3 extends Importer {
 			grp.icon = db.iconFactory.getIcon(LEDataInputStream.readInt(buf, offset));
 			break;
 		case 0x0008 :
-			grp.level = LEDataInputStream.readShort(buf, offset);
+			grp.level = LEDataInputStream.readUShort(buf, offset);
 			break;
 		case 0x0009 :
 			grp.flags = LEDataInputStream.readInt(buf, offset);
@@ -378,7 +375,7 @@ public class ImporterV3 extends Importer {
 	void readEntryField(PwDatabaseV3 db, PwEntryV3 ent, byte[] buf, int offset)
 	throws UnsupportedEncodingException
 	{
-		int fieldType = LEDataInputStream.readShort(buf, offset);
+		int fieldType = LEDataInputStream.readUShort(buf, offset);
 		offset += 2;
 		int fieldSize = LEDataInputStream.readInt(buf, offset);
 		offset += 4;
@@ -394,7 +391,14 @@ public class ImporterV3 extends Importer {
 			ent.groupId = LEDataInputStream.readInt(buf, offset);
 			break;
 		case 0x0003 :
-			ent.icon = db.iconFactory.getIcon(LEDataInputStream.readInt(buf, offset));
+			int iconId = LEDataInputStream.readInt(buf, offset);
+			
+			// Clean up after bug that set icon ids to -1
+			if (iconId == -1) {
+				iconId = 0;
+			}
+			
+			ent.icon = db.iconFactory.getIcon(iconId);
 			break;
 		case 0x0004 :
 			ent.title = Types.readCString(buf, offset); 

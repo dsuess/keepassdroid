@@ -1,5 +1,5 @@
 /*
- * Copyright 2009 Brian Pellin.
+ * Copyright 2009-2013 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -21,7 +21,6 @@ package com.keepassdroid.database.edit;
 
 import com.keepassdroid.Database;
 import com.keepassdroid.database.PwDatabase;
-import com.keepassdroid.database.PwDatabaseV3;
 import com.keepassdroid.database.PwGroup;
 
 public class AddGroup extends RunnableOnFinish {
@@ -52,7 +51,7 @@ public class AddGroup extends RunnableOnFinish {
 	
 	@Override
 	public void run() {
-		PwDatabase pm = (PwDatabaseV3) mDb.pm;
+		PwDatabase pm = mDb.pm;
 		
 		// Generate new group
 		mGroup = pm.createGroup();
@@ -75,15 +74,12 @@ public class AddGroup extends RunnableOnFinish {
 
 		@Override
 		public void run() {
-			
+			PwDatabase pm = mDb.pm;
 			if ( mSuccess ) {
 				// Mark parent group dirty
 				mDb.dirty.add(mParent);
-				
-				// Add group to global list
-				mDb.groups.put(mGroup.getId(), mGroup);
 			} else {
-				mDb.pm.removeGroupFrom(mGroup, mParent);
+				pm.removeGroupFrom(mGroup, mParent);
 			}
 			
 			super.run();

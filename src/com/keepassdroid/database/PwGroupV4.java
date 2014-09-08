@@ -1,5 +1,5 @@
 /*
- * Copyright 2010 Brian Pellin.
+ * Copyright 2010-2013 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -26,6 +26,7 @@ import java.util.UUID;
 public class PwGroupV4 extends PwGroup implements ITimeLogger {
 
 	//public static final int FOLDER_ICON = 48;
+	public static final boolean DEFAULT_SEARCHING_ENABLED = true;
 	
 	public PwGroupV4 parent = null;
 	public UUID uuid = PwDatabaseV4.UUID_ZERO;
@@ -36,16 +37,29 @@ public class PwGroupV4 extends PwGroup implements ITimeLogger {
 	public Boolean enableAutoType = null;
 	public Boolean enableSearching = null;
 	public UUID lastTopVisibleEntry = PwDatabaseV4.UUID_ZERO;
-	private Date parentGroupLastMod;
+	private Date parentGroupLastMod = PwDatabaseV4.DEFAULT_NOW;
 	private Date creation = PwDatabaseV4.DEFAULT_NOW;
 	private Date lastMod = PwDatabaseV4.DEFAULT_NOW;
 	private Date lastAccess = PwDatabaseV4.DEFAULT_NOW;
 	private Date expireDate = PwDatabaseV4.DEFAULT_NOW;
 	private boolean expires = false;
 	private long usageCount = 0;
-		
+
 	public PwGroupV4() {
 		
+	}
+	
+	public PwGroupV4(boolean createUUID, boolean setTimes, String name, PwIconStandard icon) {
+		if (createUUID) {
+			uuid = UUID.randomUUID();
+		}
+		
+		if (setTimes) {
+			creation = lastMod = lastAccess = new Date();
+		}
+		
+		this.name = name;
+		this.icon = icon;
 	}
 	
 	public void AddGroup(PwGroupV4 subGroup, boolean takeOwnership) {
@@ -158,10 +172,12 @@ public class PwGroupV4 extends PwGroup implements ITimeLogger {
 		expireDate = date;
 	}
 
+	@Override
 	public void setLastAccessTime(Date date) {
 		lastAccess = date;
 	}
 
+	@Override
 	public void setLastModificationTime(Date date) {
 		lastMod = date;
 	}
@@ -195,6 +211,28 @@ public class PwGroupV4 extends PwGroup implements ITimeLogger {
 		} else {
 			return customIcon;
 		}
+	}
+	
+	@Override
+	public void initNewGroup(String nm, PwGroupId newId) {
+		super.initNewGroup(nm, newId);
+		
+		lastAccess = lastMod = creation = parentGroupLastMod = new Date();
+	}
+	
+	public boolean isSearchEnabled() {
+		PwGroupV4 group = this;
+		while (group != null) {
+			Boolean search = group.enableSearching;
+			if (search != null) {
+				return search;
+			}
+			
+			group = group.parent;
+		}
+		
+		// If we get to the root group and its null, default to true
+		return true;
 	}
 
 }

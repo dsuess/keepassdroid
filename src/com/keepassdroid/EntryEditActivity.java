@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2011 Brian Pellin.
+ * Copyright 2009-2013 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -19,7 +19,6 @@
  */
 package com.keepassdroid;
 
-import java.io.UnsupportedEncodingException;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.UUID;
@@ -31,8 +30,9 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.preference.PreferenceManager;
-import android.text.method.PasswordTransformationMethod;
+import android.text.InputType;
 import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -45,11 +45,14 @@ import android.widget.Toast;
 import com.android.keepass.KeePass;
 import com.android.keepass.R;
 import com.keepassdroid.app.App;
-import com.keepassdroid.database.PwDate;
+import com.keepassdroid.database.PwDatabase;
 import com.keepassdroid.database.PwEntry;
 import com.keepassdroid.database.PwEntryV3;
+import com.keepassdroid.database.PwEntryV4;
 import com.keepassdroid.database.PwGroup;
+import com.keepassdroid.database.PwGroupId;
 import com.keepassdroid.database.PwGroupV3;
+import com.keepassdroid.database.PwGroupV4;
 import com.keepassdroid.database.edit.AddEntry;
 import com.keepassdroid.database.edit.OnFinish;
 import com.keepassdroid.database.edit.RunnableOnFinish;
@@ -58,27 +61,29 @@ import com.keepassdroid.icons.Icons;
 import com.keepassdroid.utils.Types;
 import com.keepassdroid.utils.Util;
 
-public class EntryEditActivity extends LockCloseActivity {
+public abstract class EntryEditActivity extends LockCloseActivity {
 	public static final String KEY_ENTRY = "entry";
 	public static final String KEY_PARENT = "parent";
 
-	private static final int MENU_DONATE = Menu.FIRST;
-	private static final int MENU_PASS = Menu.FIRST + 1;
-	
 	public static final int RESULT_OK_ICON_PICKER = 1000;
 	public static final int RESULT_OK_PASSWORD_GENERATOR = RESULT_OK_ICON_PICKER + 1;
 
-	private PwEntryV3 mEntry;
+	protected PwEntry mEntry;
 	private boolean mShowPassword = false;
-	private boolean mIsNew;
-	private int mSelectedIconID = -1;
+	protected boolean mIsNew;
+	protected int mSelectedIconID = -1;
 	
 	public static void Launch(Activity act, PwEntry pw) {
-		if ( !(pw instanceof PwEntryV3) ) {
+		Intent i;
+		if (pw instanceof PwEntryV3) {
+			i = new Intent(act, EntryEditActivityV3.class);
+		}
+		else if (pw instanceof PwEntryV4) {
+			i = new Intent(act, EntryEditActivityV4.class);
+		}
+		else {
 			throw new RuntimeException("Not yet implemented.");
 		}
-		
-		Intent i = new Intent(act, EntryEditActivity.class);
 		
 		i.putExtra(KEY_ENTRY, Types.UUIDtoBytes(pw.getUUID()));
 		
@@ -86,21 +91,29 @@ public class EntryEditActivity extends LockCloseActivity {
 	}
 	
 	public static void Launch(Activity act, PwGroup pw) {
-		if ( !(pw instanceof PwGroupV3) ) {
+		Intent i;
+		if (pw instanceof PwGroupV3) {
+			i = new Intent(act, EntryEditActivityV3.class);
+			EntryEditActivityV3.putParentId(i, KEY_PARENT, (PwGroupV3)pw);
+		}
+		else if (pw instanceof PwGroupV4) {
+			i = new Intent(act, EntryEditActivityV4.class);
+			EntryEditActivityV4.putParentId(i, KEY_PARENT, (PwGroupV4)pw);
+		}
+		else {
 			throw new RuntimeException("Not yet implemented.");
 		}
 
-		Intent i = new Intent(act, EntryEditActivity.class);
-		
-		PwGroupV3 parent = (PwGroupV3) pw;
-		i.putExtra(KEY_PARENT, parent.groupId);
-		
 		act.startActivityForResult(i, 0);
 	}
 	
+	protected abstract PwGroupId getParentGroupId(Intent i, String key);
 	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
+		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+		mShowPassword = ! prefs.getBoolean(getString(R.string.maskpass_key), getResources().getBoolean(R.bool.maskpass_default));
+		
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.entry_edit);
 		setResult(KeePass.EXIT_NORMAL);
@@ -115,17 +128,19 @@ public class EntryEditActivity extends LockCloseActivity {
 		Intent i = getIntent();
 		byte[] uuidBytes = i.getByteArrayExtra(KEY_ENTRY);
 
+		PwDatabase pm = db.pm;
 		if ( uuidBytes == null ) {
-			int groupId = i.getIntExtra(KEY_PARENT, -1);
 
-			mEntry = new PwEntryV3(db, groupId);
+			PwGroupId parentId = getParentGroupId(i, KEY_PARENT);
+			PwGroup parent = pm.groups.get(parentId);
+			mEntry = PwEntry.getInstance(parent);
 			mIsNew = true;
 			
 		} else {
 			UUID uuid = Types.bytestoUUID(uuidBytes);
 			assert(uuid != null);
 
-			mEntry = (PwEntryV3) db.entries.get(uuid);
+			mEntry = pm.entries.get(uuid);
 			mIsNew = false;
 			
 			fillData();
@@ -146,12 +161,9 @@ public class EntryEditActivity extends LockCloseActivity {
 		generatePassword.setOnClickListener(new OnClickListener() {
 			
 			public void onClick(View v) {
-				//EntryEditActivity.Launch(EntryActivity.this, mEntry);
 				GeneratePasswordActivity.Launch(EntryEditActivity.this);
 			}
 		});
-		
-
 		
 		// Save button
 		Button save = (Button) findViewById(R.id.entry_save);
@@ -160,66 +172,13 @@ public class EntryEditActivity extends LockCloseActivity {
 			public void onClick(View v) {
 				EntryEditActivity act = EntryEditActivity.this;
 				
-				// Require title
-				String title = Util.getEditText(act, R.id.entry_title);
-				if ( title.length() == 0 ) {
-					Toast.makeText(act, R.string.error_title_required, Toast.LENGTH_LONG).show();
+				if (!validateBeforeSaving()) {
 					return;
 				}
 				
-				// Validate password
-				String pass = Util.getEditText(act, R.id.entry_password);
-				String conf = Util.getEditText(act, R.id.entry_confpassword);
-				if ( ! pass.equals(conf) ) {
-					Toast.makeText(act, R.string.error_pass_match, Toast.LENGTH_LONG).show();
-					return;
-				}
-				
-				PwEntryV3 newEntry = new PwEntryV3();
-				
-				newEntry.binaryDesc = mEntry.binaryDesc;
-				newEntry.groupId = mEntry.groupId;
+				PwEntry newEntry = populateNewEntry();
 
-				if (mSelectedIconID == -1) {
-					if (mIsNew) {
-						newEntry.icon = App.getDB().pm.iconFactory.getIcon(0);
-					} else {
-						// Keep previous icon, if no new one was selected
-						newEntry.icon = mEntry.icon;
-					}
-				}
-				else {
-					newEntry.icon = App.getDB().pm.iconFactory.getIcon(mSelectedIconID);
-				}
-
-				newEntry.parent = mEntry.parent;
-				newEntry.tCreation = mEntry.tCreation;
-				newEntry.tExpire = mEntry.tExpire;
-				newEntry.setUUID(mEntry.getUUID());
-				
-				Date now = Calendar.getInstance().getTime(); 
-				newEntry.tLastAccess = new PwDate(now);
-				newEntry.tLastMod = new PwDate(now);
-				
-				byte[] binaryData = mEntry.getBinaryData();
-				if ( binaryData != null ) {
-					newEntry.setBinaryData(binaryData, 0, binaryData.length);
-				}
-
-				newEntry.title = Util.getEditText(act, R.id.entry_title);
-				newEntry.url = Util.getEditText(act, R.id.entry_url);
-				newEntry.username = Util.getEditText(act, R.id.entry_user_name);
-				newEntry.additional = Util.getEditText(act, R.id.entry_comment);
-				byte[] password;
-				try {
-					password = pass.getBytes("UTF-8");
-				} catch (UnsupportedEncodingException e) {
-					assert false;
-					password = pass.getBytes();
-				}
-				newEntry.setPassword(password, 0, password.length);
-
-				if ( newEntry.title.equals(mEntry.title) ) {
+				if ( newEntry.getTitle().equals(mEntry.getTitle()) ) {
 					setResult(KeePass.EXIT_REFRESH);
 				} else {
 					setResult(KeePass.EXIT_REFRESH_TITLE);
@@ -251,15 +210,61 @@ public class EntryEditActivity extends LockCloseActivity {
 		});
 		
 		// Respect mask password setting
-		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-		if (! prefs.getBoolean(getString(R.string.maskpass_key), getResources().getBoolean(R.bool.maskpass_default))) {
+		if (mShowPassword) {
 			EditText pass = (EditText) findViewById(R.id.entry_password);
-			pass.setTransformationMethod(null);
-			
 			EditText conf = (EditText) findViewById(R.id.entry_confpassword);
-			conf.setTransformationMethod(null);
+			
+			pass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+			conf.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
 		}
 		
+	}
+	
+	protected boolean validateBeforeSaving() {
+		// Require title
+		String title = Util.getEditText(this, R.id.entry_title);
+		if ( title.length() == 0 ) {
+			Toast.makeText(this, R.string.error_title_required, Toast.LENGTH_LONG).show();
+			return false;
+		}
+		
+		// Validate password
+		String pass = Util.getEditText(this, R.id.entry_password);
+		String conf = Util.getEditText(this, R.id.entry_confpassword);
+		if ( ! pass.equals(conf) ) {
+			Toast.makeText(this, R.string.error_pass_match, Toast.LENGTH_LONG).show();
+			return false;
+		}
+		
+		return true;
+	}
+	
+	protected PwEntry populateNewEntry() {
+		return populateNewEntry(null);
+	}
+	
+	protected PwEntry populateNewEntry(PwEntry entry) {
+		PwEntry newEntry;
+		if (entry == null) {
+			newEntry = mEntry.clone(true);
+		} 
+		else {
+			newEntry = entry;
+			
+		}
+		
+		Date now = Calendar.getInstance().getTime(); 
+		newEntry.setLastAccessTime(now);
+		newEntry.setLastModificationTime(now);
+		
+		PwDatabase db = App.getDB().pm;
+		newEntry.setTitle(Util.getEditText(this, R.id.entry_title), db);
+		newEntry.setUrl(Util.getEditText(this, R.id.entry_url), db);
+		newEntry.setUsername(Util.getEditText(this, R.id.entry_user_name), db);
+		newEntry.setNotes(Util.getEditText(this, R.id.entry_comment), db);
+		newEntry.setPassword(Util.getEditText(this, R.id.entry_password), db);
+		
+		return newEntry;
 	}
 	
 	@Override
@@ -292,18 +297,23 @@ public class EntryEditActivity extends LockCloseActivity {
 	public boolean onCreateOptionsMenu(Menu menu) {
 		super.onCreateOptionsMenu(menu);
 		
-		menu.add(0, MENU_DONATE, 0, R.string.menu_donate);
-		menu.findItem(MENU_DONATE).setIcon(android.R.drawable.ic_menu_share);
-
-		menu.add(0, MENU_PASS, 0, R.string.show_password);
-		menu.findItem(MENU_PASS).setIcon(android.R.drawable.ic_menu_view);
+		MenuInflater inflater = getMenuInflater();
+		inflater.inflate(R.menu.entry_edit, menu);
+		
+		
+		MenuItem togglePassword = menu.findItem(R.id.menu_toggle_pass);
+		if ( mShowPassword ) {
+			togglePassword.setTitle(R.string.menu_hide_password);
+		} else {
+			togglePassword.setTitle(R.string.show_password);
+		}
 		
 		return true;
 	}
 	
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch ( item.getItemId() ) {
-		case MENU_DONATE:
+		case R.id.menu_donate:
 			try {
 				Util.gotoUrl(this, R.string.donate_url);
 			} catch (ActivityNotFoundException e) {
@@ -312,12 +322,12 @@ public class EntryEditActivity extends LockCloseActivity {
 			}
 			
 			return true;
-		case MENU_PASS:
+		case R.id.menu_toggle_pass:
 			if ( mShowPassword ) {
-				item.setTitle(R.string.menu_hide_password);
+				item.setTitle(R.string.show_password);
 				mShowPassword = false;
 			} else {
-				item.setTitle(R.string.show_password);
+				item.setTitle(R.string.menu_hide_password);
 				mShowPassword = true;
 			}
 			setPasswordStyle();
@@ -332,30 +342,29 @@ public class EntryEditActivity extends LockCloseActivity {
 		TextView confpassword = (TextView) findViewById(R.id.entry_confpassword);
 
 		if ( mShowPassword ) {
-			password.setTransformationMethod(null);
-			confpassword.setTransformationMethod(null);
+			password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+			confpassword.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
 
 		} else {
-			PasswordTransformationMethod ptm = PasswordTransformationMethod.getInstance();
-			password.setTransformationMethod(ptm);
-			confpassword.setTransformationMethod(ptm);
+			password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+			confpassword.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
 		}
 	}
 
-	private void fillData() {
+	protected void fillData() {
 		ImageButton currIconButton = (ImageButton) findViewById(R.id.icon_button);
 		App.getDB().drawFactory.assignDrawableTo(currIconButton, getResources(), mEntry.getIcon());
 		
-		populateText(R.id.entry_title, mEntry.title);
+		populateText(R.id.entry_title, mEntry.getTitle());
 		populateText(R.id.entry_user_name, mEntry.getUsername());
-		populateText(R.id.entry_url, mEntry.url);
+		populateText(R.id.entry_url, mEntry.getUrl());
 		
 		String password = new String(mEntry.getPassword());
 		populateText(R.id.entry_password, password);
 		populateText(R.id.entry_confpassword, password);
 		setPasswordStyle();
 
-		populateText(R.id.entry_comment, mEntry.additional);
+		populateText(R.id.entry_comment, mEntry.getNotes());
 	}
 
 	private void populateText(int viewId, String text) {

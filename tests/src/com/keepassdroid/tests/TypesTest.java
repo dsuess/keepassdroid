@@ -5,7 +5,7 @@
  *
  *  KeePassDroid is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
+ *  the Free Software Foundation, either version 2 of the License, or
  *  (at your option) any later version.
  *
  *  KeePassDroid is distributed in the hope that it will be useful,
@@ -110,8 +110,8 @@ public class TypesTest extends TestCase {
 		orig[0] = 0;
 		orig[1] = 1;
 		
-		int one = LEDataInputStream.readShort(orig, 0);
-		dest = Types.writeShort(one);
+		int one = LEDataInputStream.readUShort(orig, 0);
+		dest = LEDataOutputStream.writeUShortBuf(one);
 		
 		assertArrayEquals(orig, dest);
 		
@@ -131,8 +131,8 @@ public class TypesTest extends TestCase {
 		
 		setArray(orig, value, 0, 2);
 		
-		int one = LEDataInputStream.readShort(orig, 0);
-		Types.writeShort(one, dest, 0);
+		int one = LEDataInputStream.readUShort(orig, 0);
+		LEDataOutputStream.writeUShort(one, dest, 0);
 		
 		assertArrayEquals(orig, dest);
 
@@ -175,7 +175,7 @@ public class TypesTest extends TestCase {
 		
 		assertEquals("Year mismatch: ", 2008, actual.get(Calendar.YEAR));
 		assertEquals("Month mismatch: ", 1, actual.get(Calendar.MONTH));
-		assertEquals("Day mismatch: ", 2, actual.get(Calendar.DAY_OF_MONTH));
+		assertEquals("Day mismatch: ", 1, actual.get(Calendar.DAY_OF_MONTH));
 		assertEquals("Hour mismatch: ", 3, actual.get(Calendar.HOUR_OF_DAY));
 		assertEquals("Minute mismatch: ", 4, actual.get(Calendar.MINUTE));
 		assertEquals("Second mismatch: ", 5, actual.get(Calendar.SECOND));

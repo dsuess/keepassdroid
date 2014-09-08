@@ -59,9 +59,6 @@ import com.keepassdroid.database.exception.InvalidKeyFileException;
  * @author Dominik Reichl <dominik.reichl@t-online.de>
  */
 public class PwDatabaseV3 extends PwDatabase {
-	// TODO: delete ME
-	public byte[] postHeader;
-
 	// Constants
 	// private static final int PWM_SESSION_KEY_SIZE = 12;
 
@@ -75,10 +72,7 @@ public class PwDatabaseV3 extends PwDatabase {
 	// Algorithm used to encrypt the database
 	public PwEncryptionAlgorithm algorithm;
 	public int numKeyEncRounds;
-
-	// Debugging entries
-	public PwDbHeaderV3 dbHeader;
-
+	
 	@Override
 	public PwEncryptionAlgorithm getEncAlgorithm() {
 		return algorithm;
@@ -306,7 +300,16 @@ public class PwDatabaseV3 extends PwDatabase {
 	public PwGroup createGroup() {
 		return new PwGroupV3();
 	}
+	
+	// TODO: This could still be refactored cleaner
+	public void copyEncrypted(byte[] buf, int offset, int size) {
+		// No-op
+	}
 
+	// TODO: This could still be refactored cleaner
+	public void copyHeader(PwDbHeaderV3 header) {
+		// No-op
+	}
 	@Override
 	public boolean isBackup(PwGroup group) {
 		PwGroupV3 g = (PwGroupV3) group;
@@ -321,4 +324,12 @@ public class PwDatabaseV3 extends PwDatabase {
 		return false;
 	}
 
+	@Override
+	public boolean isGroupSearchable(PwGroup group, boolean omitBackup) {
+		if (!super.isGroupSearchable(group, omitBackup)) {
+			return false;
+		}
+		
+		return !(omitBackup && isBackup(group));
+	}
 }

@@ -1,5 +1,23 @@
 /*
-KeePass for J2ME
+ * Copyright 2010-2014 Brian Pellin.
+ *     
+ * This file is part of KeePassDroid.
+ *
+ *  KeePassDroid is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  KeePassDroid is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with KeePassDroid.  If not, see <http://www.gnu.org/licenses/>.
+ *
+
+This file was derived from 
 
 Copyright 2007 Naomaru Itoi <nao@phoneid.org>
 
@@ -25,13 +43,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 package com.keepassdroid.database;
 
 // PhoneID
+import java.io.UnsupportedEncodingException;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Random;
 import java.util.UUID;
 
-
-import com.keepassdroid.Database;
 import com.keepassdroid.utils.Types;
 
 
@@ -70,7 +87,6 @@ public class PwEntryV3 extends PwEntry {
 	public static final String PMS_ID_TITLE   = "Meta-Info";
 	public static final String PMS_ID_USER    = "SYSTEM";
 	public static final String PMS_ID_URL     = "$";
-	private static final String PMS_TAN_ENTRY ="<TAN>";
 
 
 
@@ -151,45 +167,38 @@ public class PwEntryV3 extends PwEntry {
 		assign(source);
 	}
 	*/
-
-	public PwEntryV3(Database db, int parentId) {
-
-		
-
-		parent = (PwGroupV3) db.groups.get(new PwGroupIdV3(parentId));
-		groupId = parentId;
-
-		Random random = new Random();
-		uuid = new byte[16];
-		random.nextBytes(uuid);
-
-		Calendar cal = Calendar.getInstance();
-		Date now = cal.getTime();
-		tCreation = new PwDate(now);
-		tLastAccess = new PwDate(now);
-		tLastMod = new PwDate(now);
-		tExpire = new PwDate(NEVER_EXPIRE);
-
-	}
 	
-	public boolean isTan() {
-		return title.equals(PMS_TAN_ENTRY);
+	public PwEntryV3(PwGroupV3 p) {
+		this(p, true, true);
 	}
-	
-	@Override
-	public String getDisplayTitle() {
-		if ( isTan() ) {
-			return PMS_TAN_ENTRY + " " + username;
-		} else {
-			return title;	
+
+	public PwEntryV3(PwGroupV3 p, boolean initId, boolean initDates) {
+
+		parent = p;
+		groupId = ((PwGroupIdV3)parent.getId()).getId();
+
+		if (initId) {
+			Random random = new Random();
+			uuid = new byte[16];
+			random.nextBytes(uuid);
 		}
-	}
+		
+		if (initDates) {
+			Calendar cal = Calendar.getInstance();
+			Date now = cal.getTime();
+			tCreation = new PwDate(now);
+			tLastAccess = new PwDate(now);
+			tLastMod = new PwDate(now);
+			tExpire = new PwDate(NEVER_EXPIRE);
+		}
 
+	}
+	
 	/**
 	 * @return the actual password byte array.
 	 */
 	@Override
-	public String getPassword() {
+	public String getPassword(boolean decodeRef, PwDatabase db) {
 		if (password == null) {
 			return "";
 		}
@@ -223,6 +232,19 @@ public class PwEntryV3 extends PwEntry {
 	}
 
 
+
+	@Override
+	public void setPassword(String pass, PwDatabase db) {
+		byte[] password;
+		try {
+			password = pass.getBytes("UTF-8");
+			setPassword(password, 0, password.length);
+		} catch (UnsupportedEncodingException e) {
+			assert false;
+			password = pass.getBytes();
+			setPassword(password, 0, password.length);
+		}
+	}
 
 	/**
 	 * @return the actual binaryData byte array.
@@ -334,30 +356,53 @@ public class PwEntryV3 extends PwEntry {
 	}
 
 	@Override
-	public void stampLastAccess() {
-		Calendar cal = Calendar.getInstance();
-		tLastAccess = new PwDate(cal.getTime());
-		
-	}
-
-	@Override
-	public Date getAccess() {
+	public Date getLastAccessTime() {
 		return tLastAccess.getJDate();
 	}
 
 	@Override
-	public Date getCreate() {
+	public Date getCreationTime() {
 		return tCreation.getJDate();
 	}
 
 	@Override
-	public Date getExpire() {
+	public Date getExpiryTime() {
 		return tExpire.getJDate();
 	}
 
 	@Override
-	public Date getMod() {
+	public Date getLastModificationTime() {
 		return tLastMod.getJDate();
+	}
+
+	@Override
+	public void setCreationTime(Date create) {
+		tCreation = new PwDate(create);
+		
+	}
+
+	@Override
+	public void setLastModificationTime(Date mod) {
+		tLastMod = new PwDate(mod);
+		
+	}
+
+	@Override
+	public void setLastAccessTime(Date access) {
+		tLastAccess = new PwDate(access);
+		
+	}
+
+	@Override
+	public void setExpires(boolean expires) {
+		if (!expires) {
+			tExpire = PW_NEVER_EXPIRE;
+		}
+	}
+
+	@Override
+	public void setExpiryTime(Date expires) {
+		tExpire = new PwDate(expires);
 	}
 
 	@Override
@@ -376,7 +421,7 @@ public class PwEntryV3 extends PwEntry {
 	}
 
 	@Override
-	public String getUsername() {
+	public String getUsername(boolean decodeRef, PwDatabase db) {
 		if (username == null) {
 			return "";
 		}
@@ -385,18 +430,38 @@ public class PwEntryV3 extends PwEntry {
 	}
 
 	@Override
-	public String getTitle() {
-		return title;
+	public void setUsername(String user, PwDatabase db) {
+		username = user;
 	}
 
 	@Override
-	public String getNotes() {
+	public String getTitle(boolean decodeRef, PwDatabase db) {
+        return title;
+	}
+
+	@Override
+	public void setTitle(String title, PwDatabase db) {
+		this.title = title;
+	}
+
+	@Override
+	public String getNotes(boolean decodeRef, PwDatabase db) {
 		return additional;
 	}
 
 	@Override
-	public String getUrl() {
+	public void setNotes(String notes, PwDatabase db) {
+		additional = notes;
+	}
+
+	@Override
+	public String getUrl(boolean decodeRef, PwDatabase db) {
 		return url;
+	}
+
+	@Override
+	public void setUrl(String url, PwDatabase db) {
+		this.url = url;
 	}
 
 	@Override
@@ -456,5 +521,10 @@ public class PwEntryV3 extends PwEntry {
 		if (binaryData == null) {
 			binaryData = new byte[0];
 		}
+	}
+
+	@Override
+	public void setParent(PwGroup parent) {
+		this.parent = (PwGroupV3) parent;
 	}
 }

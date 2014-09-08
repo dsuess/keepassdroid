@@ -5,7 +5,7 @@
  *
  *  KeePassDroid is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
+ *  the Free Software Foundation, either version 2 of the License, or
  *  (at your option) any later version.
  *
  *  KeePassDroid is distributed in the hope that it will be useful,
@@ -25,7 +25,7 @@ import android.content.Context;
 import android.content.res.AssetManager;
 
 import com.keepassdroid.Database;
-import com.keepassdroid.database.PwDatabaseV3;
+import com.keepassdroid.database.PwDatabaseV3Debug;
 import com.keepassdroid.database.load.Importer;
 
 public class TestData {
@@ -60,11 +60,11 @@ public class TestData {
 		
 	}
 	
-	public static PwDatabaseV3 GetTest1(Context ctx) throws Exception {
+	public static PwDatabaseV3Debug GetTest1(Context ctx) throws Exception {
 		if ( mDb1 == null ) {
 			GetDb1(ctx);
 		}
 		
-		return (PwDatabaseV3) mDb1.pm;
+		return (PwDatabaseV3Debug) mDb1.pm;
 	}
 }

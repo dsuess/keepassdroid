@@ -65,10 +65,7 @@ public class GeneratePasswordActivity extends LockCloseActivity {
 		Button genPassButton = (Button) findViewById(R.id.generate_password_button);
         genPassButton.setOnClickListener(new OnClickListener() {
 			public void onClick(View v) {
-				String password = generatePassword();
-				
-				EditText txtPassword = (EditText) findViewById(R.id.password);
-				txtPassword.setText(password);
+				fillPassword();
 			}
 		});
         
@@ -96,13 +93,21 @@ public class GeneratePasswordActivity extends LockCloseActivity {
 				finish();
 			}
 		});
+        
+        // Pre-populate a password to possibly save the user a few clicks
+        fillPassword();
+	}
+	
+	private void fillPassword() {
+		EditText txtPassword = (EditText) findViewById(R.id.password);
+		txtPassword.setText(generatePassword());
 	}
 	
     public String generatePassword() {
     	String password = "";
     	
     	try {
-    		int length = new Integer(((EditText) findViewById(R.id.length)).getText().toString());
+    		int length = Integer.valueOf(((EditText) findViewById(R.id.length)).getText().toString());
     		
     		((CheckBox) findViewById(R.id.cb_uppercase)).isChecked();
         	

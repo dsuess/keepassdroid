@@ -57,33 +57,7 @@ import com.keepassdroid.stream.LEDataOutputStream;
  */
 public class Types {
 	
-	public static byte[] writeInt(int val) {
-	  byte[] buf = new byte[4];
-	  LEDataOutputStream.writeInt(val, buf, 0);
-
-	  return buf;
-  }
-
-  /** Write an unsigned 16-bit value
-   * 
-   * @param val
-   * @param buf
-   * @param offset
-   */
-  public static void writeShort(int val, byte[] buf, int offset) {
-	  buf[offset + 0] = (byte)(val & 0x00FF);
-	  buf[offset + 1] = (byte)((val & 0xFF00) >> 8);
-  }
-
-  public static byte[] writeShort(int val) {
-	  byte[] buf = new byte[2];
-	  
-	  writeShort(val, buf, 0);
-	  
-	  return buf;
-  }
-                     
-  /** Read an unsigned byte */
+	/** Read an unsigned byte */
   public static int readUByte( byte[] buf, int offset ) {
     return ((int)buf[offset] & 0xFF);
   }
@@ -156,7 +130,7 @@ public class Types {
   public static int writeCString(String str, OutputStream os) throws IOException {
 	  if ( str == null ) {
 		  // Write out a null character
-		  os.write(writeInt(1));
+		  os.write(LEDataOutputStream.writeIntBuf(1));
 		  os.write(0x00);
 		  return 0;
 	  }
@@ -168,7 +142,7 @@ public class Types {
 	  byte[] initial = str.getBytes("UTF-8");
 	  
 	  int length = initial.length+1;
-	  os.write(writeInt(length));
+	  os.write(LEDataOutputStream.writeIntBuf(length));
 	  os.write(initial);
 	  os.write(0x00);
 	  

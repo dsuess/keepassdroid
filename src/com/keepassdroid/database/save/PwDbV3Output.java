@@ -1,5 +1,5 @@
 /*
-` * Copyright 2009 Brian Pellin.
+` * Copyright 2009-2014 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -20,6 +20,7 @@
 package com.keepassdroid.database.save;
 
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.security.DigestOutputStream;
@@ -45,26 +46,20 @@ import com.keepassdroid.database.PwEntryV3;
 import com.keepassdroid.database.PwGroup;
 import com.keepassdroid.database.PwGroupV3;
 import com.keepassdroid.database.exception.PwDbOutputException;
+import com.keepassdroid.stream.LEDataOutputStream;
 import com.keepassdroid.stream.NullOutputStream;
 
 public class PwDbV3Output extends PwDbOutput {
 	private PwDatabaseV3 mPM;
-	private OutputStream mOS;
-	private final boolean mDebug;
-	public static final boolean DEBUG = true;
+	private byte[] headerHashBlock;
 	
 	public PwDbV3Output(PwDatabaseV3 pm, OutputStream os) {
+		super(os);
+		
 		mPM = pm;
-		mOS = os;
-		mDebug = false;
+
 	}
 
-	public PwDbV3Output(PwDatabaseV3 pm, OutputStream os, boolean debug) {
-		mPM = pm;
-		mOS = os;
-		mDebug = debug;
-	}
-	
 	public byte[] getFinalKey(PwDbHeader header) throws PwDbOutputException {
 		try {
 			mPM.makeFinalKey(header.masterSeed, header.transformSeed, mPM.numKeyEncRounds);
@@ -74,10 +69,9 @@ public class PwDbV3Output extends PwDbOutput {
 		}
 	}
 	
+	@Override
 	public void output() throws PwDbOutputException {
-		
-		// Before we output the header, we should sort our list of groups and remove any orphaned nodes that are no longer part of the group hierarchy
-		sortGroupsForOutput();
+		prepForOutput();
 		
 		PwDbHeader header = outputHeader(mOS);
 		
@@ -113,6 +107,11 @@ public class PwDbV3Output extends PwDbOutput {
 		}
 	}
 	
+	private void prepForOutput() {
+		// Before we output the header, we should sort our list of groups and remove any orphaned nodes that are no longer part of the group hierarchy
+		sortGroupsForOutput();
+	}
+
 	public PwDbHeaderV3 outputHeader(OutputStream os) throws PwDbOutputException {
 		// Build header
 		PwDbHeaderV3 header = new PwDbHeaderV3();
@@ -133,24 +132,9 @@ public class PwDbV3Output extends PwDbOutput {
 		header.numEntries = mPM.entries.size();
 		header.numKeyEncRounds = mPM.getNumKeyEncRecords();
 		
-		// Reuse random values to test equivalence in debug mode
-		if ( mDebug ) {
-			System.arraycopy(mPM.dbHeader.encryptionIV, 0, header.encryptionIV, 0, mPM.dbHeader.encryptionIV.length);
-			System.arraycopy(mPM.dbHeader.masterSeed, 0, header.masterSeed, 0, mPM.dbHeader.masterSeed.length);
-			System.arraycopy(mPM.dbHeader.transformSeed, 0, header.transformSeed, 0, mPM.dbHeader.transformSeed.length);
-		} else {
-			SecureRandom random;
-			try {
-				random = SecureRandom.getInstance("SHA1PRNG");
-			} catch (NoSuchAlgorithmException e) {
-				throw new PwDbOutputException("Does not support secure random number generation.");
-			}
-			random.nextBytes(header.encryptionIV);
-			random.nextBytes(header.masterSeed);
-			random.nextBytes(header.transformSeed);
-		}
+		setIVs(header);
 		
-		// Write checksum Checksum
+		// Content checksum
 		MessageDigest md = null;
 		try {
 			md = MessageDigest.getInstance("SHA-256");
@@ -158,7 +142,30 @@ public class PwDbV3Output extends PwDbOutput {
 			throw new PwDbOutputException("SHA-256 not implemented here.");
 		}
 		
+		// Header checksum
+		MessageDigest headerDigest;
+		try {
+			headerDigest = MessageDigest.getInstance("SHA-256");
+		} catch (NoSuchAlgorithmException e) {
+			throw new PwDbOutputException("SHA-256 not implemented here.");
+		}
 		NullOutputStream nos;
+		nos = new NullOutputStream();
+		DigestOutputStream headerDos = new DigestOutputStream(nos, headerDigest);
+
+		// Output header for the purpose of calculating the header checksum
+		PwDbHeaderOutputV3 pho = new PwDbHeaderOutputV3(header, headerDos);
+		try {
+			pho.outputStart();
+			pho.outputEnd();
+			headerDos.flush();
+		} catch (IOException e) {
+			throw new PwDbOutputException(e);
+		}
+		byte[] headerHash = headerDigest.digest();
+		headerHashBlock = getHeaderHashBuffer(headerHash);
+		
+		// Output database for the purpose of calculating the content checksum
 		nos = new NullOutputStream();
 		DigestOutputStream dos = new DigestOutputStream(nos, md);
 		BufferedOutputStream bos = new BufferedOutputStream(dos);
@@ -172,19 +179,34 @@ public class PwDbV3Output extends PwDbOutput {
 
 		header.contentsHash = md.digest();
 		
-		// Output header
-		PwDbHeaderOutputV3 pho = new PwDbHeaderOutputV3(header, os);
+		// Output header for real output, containing content hash
+		pho = new PwDbHeaderOutputV3(header, os);
 		try {
-			pho.output();
+			pho.outputStart();
+			dos.on(false);
+			pho.outputContentHash();
+			dos.on(true);
+			pho.outputEnd();
+			dos.flush();
 		} catch (IOException e) {
-			throw new PwDbOutputException("Failed to output the header.");
+			throw new PwDbOutputException(e);
 		}
-
+		
 		return header;
 	}
 	
 	public void outputPlanGroupAndEntries(OutputStream os) throws PwDbOutputException  {
-		//long size = 0;
+		LEDataOutputStream los = new LEDataOutputStream(os);
+		
+		if (useHeaderHash() && headerHashBlock != null) {
+		    try {
+			    los.writeUShort(0x0000);
+			    los.writeInt(headerHashBlock.length);
+			    los.write(headerHashBlock);
+		    } catch (IOException e) {
+			    throw new PwDbOutputException("Failed to output header hash: " + e.getMessage());
+		    }
+		}
 		
 		// Groups
 		List<PwGroup> groups = mPM.getGroups();
@@ -230,5 +252,40 @@ public class PwDbV3Output extends PwDbOutput {
 		for ( int i = 0; i < group.childGroups.size(); i++ ) {
 			sortGroup((PwGroupV3) group.childGroups.get(i), groupList);
 		}
+	}
+	
+	private byte[] getHeaderHashBuffer(byte[] headerDigest) {
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		try {
+			writeExtData(headerDigest, baos);
+			return baos.toByteArray();
+		} catch (IOException e) {
+			return null;
+		}
+	}
+	
+	private void writeExtData(byte[] headerDigest, OutputStream os) throws IOException {
+		LEDataOutputStream los = new LEDataOutputStream(os);
+		
+	    writeExtDataField(los, 0x0001, headerDigest, headerDigest.length);
+	    byte[] headerRandom = new byte[32];
+	    SecureRandom rand = new SecureRandom();
+	    rand.nextBytes(headerRandom);
+	    writeExtDataField(los, 0x0002, headerRandom, headerRandom.length);
+	    writeExtDataField(los, 0xFFFF, null, 0);
+		
+	}
+
+	private void writeExtDataField(LEDataOutputStream los, int fieldType, byte[] data, int fieldSize) throws IOException {
+		los.writeUShort(fieldType);
+		los.writeInt(fieldSize);
+		if (data != null) {
+		    los.write(data);
+		}
+		
+	}
+	
+	protected boolean useHeaderHash() {
+		return true;
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2009 Brian Pellin.
+ * Copyright 2009-2013 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -30,12 +30,13 @@ import com.android.keepass.R;
 import com.keepassdroid.Database;
 import com.keepassdroid.app.App;
 import com.keepassdroid.database.exception.ArcFourException;
+import com.keepassdroid.database.exception.InvalidAlgorithmException;
 import com.keepassdroid.database.exception.InvalidDBException;
 import com.keepassdroid.database.exception.InvalidDBSignatureException;
 import com.keepassdroid.database.exception.InvalidDBVersionException;
 import com.keepassdroid.database.exception.InvalidKeyFileException;
 import com.keepassdroid.database.exception.InvalidPasswordException;
-import com.keepassdroid.fileselect.FileDbHelper;
+import com.keepassdroid.database.exception.KeyFileEmptyException;
 
 public class LoadDB extends RunnableOnFinish {
 	private String mFileName;
@@ -77,8 +78,14 @@ public class LoadDB extends RunnableOnFinish {
 		} catch (IOException e) {
 			finish(false, e.getMessage());
 			return;
+		} catch (KeyFileEmptyException e) {
+			finish(false, mCtx.getString(R.string.keyfile_is_empty));
+			return;
+		} catch (InvalidAlgorithmException e) {
+			finish(false, mCtx.getString(R.string.invalid_algorithm));
+			return;
 		} catch (InvalidKeyFileException e) {
-			finish(false, e.getMessage());
+			finish(false, mCtx.getString(R.string.keyfile_does_not_exist));
 			return;
 		} catch (InvalidDBSignatureException e) {
 			finish(false, mCtx.getString(R.string.invalid_db_sig));
@@ -98,13 +105,11 @@ public class LoadDB extends RunnableOnFinish {
 	}
 	
 	private void saveFileData(String fileName, String key) {
-		FileDbHelper db = App.fileDbHelper;
-		
 		if ( ! mRememberKeyfile ) {
 			key = "";
 		}
 		
-		db.createFile(fileName, key);
+		App.getFileHistory().createFile(fileName, key);
 	}
 	
 

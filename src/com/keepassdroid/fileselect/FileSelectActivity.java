@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2011 Brian Pellin.
+ * Copyright 2009-2014 Brian Pellin.
  *     
  * This file is part of KeePassDroid.
  *
@@ -28,25 +28,25 @@ import android.app.ListActivity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.database.Cursor;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
 import android.preference.PreferenceManager;
 import android.view.ContextMenu;
+import android.view.ContextMenu.ContextMenuInfo;
 import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.ContextMenu.ContextMenuInfo;
+import android.widget.AdapterView.AdapterContextMenuInfo;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.CursorAdapter;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ListView;
-import android.widget.SimpleCursorAdapter;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.widget.AdapterView.AdapterContextMenuInfo;
 
 import com.android.keepass.R;
 import com.keepassdroid.AboutDialog;
@@ -65,15 +65,12 @@ import com.keepassdroid.view.FileNameView;
 
 public class FileSelectActivity extends ListActivity {
 
-	private static final int MENU_DONATE = Menu.FIRST;
-	private static final int MENU_ABOUT = Menu.FIRST + 1;
-	private static final int MENU_APP_SETTINGS = Menu.FIRST + 2;
-	
 	private static final int CMENU_CLEAR = Menu.FIRST;
 	
 	public static final int FILE_BROWSE = 1;
+	public static final int GET_CONTENT = 2;
 	
-	private FileDbHelper mDbHelper;
+	private RecentFileHistory fileHistory;
 
 	private boolean recentMode = false;
 
@@ -81,9 +78,9 @@ public class FileSelectActivity extends ListActivity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		
-		mDbHelper = App.fileDbHelper;
+		fileHistory = App.getFileHistory();
 
-		if (mDbHelper.hasRecentFiles()) {
+		if (fileHistory.hasRecentFiles()) {
 			recentMode = true;
 			setContentView(R.layout.file_selection);
 		} else {
@@ -184,16 +181,37 @@ public class FileSelectActivity extends ListActivity {
 		browseButton.setOnClickListener(new View.OnClickListener() {
 			
 			public void onClick(View v) {
-				if (Interaction.isIntentAvailable(FileSelectActivity.this, Intents.FILE_BROWSE)) {
-					Intent i = new Intent(Intents.FILE_BROWSE);
+				Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+				i.setType("file/*");
+				
+				try {
+					startActivityForResult(i, GET_CONTENT);
+				} catch (ActivityNotFoundException e) {
+					lookForOpenIntentsFilePicker();
+				} catch (SecurityException e) {
+					lookForOpenIntentsFilePicker();
+				}
+			}
+			
+			private void lookForOpenIntentsFilePicker() {
+				
+				if (Interaction.isIntentAvailable(FileSelectActivity.this, Intents.OPEN_INTENTS_FILE_BROWSE)) {
+					Intent i = new Intent(Intents.OPEN_INTENTS_FILE_BROWSE);
 					i.setData(Uri.parse("file://" + Util.getEditText(FileSelectActivity.this, R.id.file_filename)));
-					startActivityForResult(i, FILE_BROWSE);
+					try {
+						startActivityForResult(i, FILE_BROWSE);
+					} catch (ActivityNotFoundException e) {
+						showBrowserDialog();
+					}
 					
 				} else {
-					BrowserDialog diag = new BrowserDialog(FileSelectActivity.this);
-					diag.show();
+					showBrowserDialog();
 				}
-				
+			}
+			
+			private void showBrowserDialog() {
+				BrowserDialog diag = new BrowserDialog(FileSelectActivity.this);
+				diag.show();
 			}
 		});
 
@@ -231,9 +249,7 @@ public class FileSelectActivity extends ListActivity {
 		public void run() {
 			if (mSuccess) {
 				// Add to recent files
-				FileDbHelper dbHelper = App.fileDbHelper;
-
-				dbHelper.createFile(mFilename, getFilename());
+				fileHistory.createFile(mFilename, getFilename());
 
 				GroupActivity.Launch(FileSelectActivity.this);
 
@@ -261,44 +277,35 @@ public class FileSelectActivity extends ListActivity {
 	private void fillData() {
 		// Set the initial value of the filename
 		EditText filename = (EditText) findViewById(R.id.file_filename);
-		filename.setText(Environment.getExternalStorageDirectory() + getString(R.string.default_file_path));
+		filename.setText(Environment.getExternalStorageDirectory().getAbsolutePath() + getString(R.string.default_file_path));
 		
-		// Get all of the rows from the database and create the item list
-		Cursor filesCursor = mDbHelper.fetchAllFiles();
-		startManagingCursor(filesCursor);
-
-		// Create an array to specify the fields we want to display in the list
-		// (only TITLE)
-		String[] from = new String[] { FileDbHelper.KEY_FILE_FILENAME };
-
-		// and an array of the fields we want to bind those fields to (in this
-		// case just text1)
-		int[] to = new int[] { R.id.file_filename };
-
-		// Now create a simple cursor adapter and set it to display
-		SimpleCursorAdapter notes = new SimpleCursorAdapter(this,
-				R.layout.file_row, filesCursor, from, to);
-		setListAdapter(notes);
+		ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, R.layout.file_row, R.id.file_filename, fileHistory.getDbList());
+		setListAdapter(adapter);
 	}
 
 	@Override
 	protected void onListItemClick(ListView l, View v, int position, long id) {
 		super.onListItemClick(l, v, position, id);
 
-		Cursor cursor = mDbHelper.fetchFile(id);
-		startManagingCursor(cursor);
-
-		String fileName = cursor.getString(cursor
-				.getColumnIndexOrThrow(FileDbHelper.KEY_FILE_FILENAME));
-		String keyFile = cursor.getString(cursor
-				.getColumnIndexOrThrow(FileDbHelper.KEY_FILE_KEYFILE));
-
-		try {
-			PasswordActivity.Launch(this, fileName, keyFile);
-		} catch (FileNotFoundException e) {
-			Toast.makeText(this, R.string.FileNotFound, Toast.LENGTH_LONG)
-					.show();
-		}
+		new AsyncTask<Integer, Void, Void>() {
+			String fileName;
+			String keyFile;
+			protected Void doInBackground(Integer... args) {
+				int position = args[0];
+				fileName = fileHistory.getDatabaseAt(position);
+				keyFile = fileHistory.getKeyfileAt(position);
+				return null;
+			}
+			
+			protected void onPostExecute(Void v) {
+				try {
+					PasswordActivity.Launch(FileSelectActivity.this, fileName, keyFile);
+				} catch (FileNotFoundException e) {
+					Toast.makeText(FileSelectActivity.this, R.string.FileNotFound, Toast.LENGTH_LONG)
+							.show();
+				}
+			}
+		}.execute(position);
 	}
 
 	@Override
@@ -307,20 +314,30 @@ public class FileSelectActivity extends ListActivity {
 
 		fillData();
 		
+		String filename = null;
 		if (requestCode == FILE_BROWSE && resultCode == RESULT_OK) {
-			String filename = data.getDataString();
+			filename = data.getDataString();
 			if (filename != null) {
 				if (filename.startsWith("file://")) {
 					filename = filename.substring(7);
 				}
 				
 				filename = URLDecoder.decode(filename);
-				
-				EditText fn = (EditText) findViewById(R.id.file_filename);
-				fn.setText(filename);
-				
 			}
 			
+		}
+		else if (requestCode == GET_CONTENT && resultCode == RESULT_OK) {
+			if (data != null) {
+				Uri uri = data.getData();
+				if (uri != null) {
+					filename = uri.getPath();
+				}
+			}
+		}
+		
+		if (filename != null) {
+			EditText fn = (EditText) findViewById(R.id.file_filename);
+			fn.setText(filename);
 		}
 	}
 
@@ -329,7 +346,7 @@ public class FileSelectActivity extends ListActivity {
 		super.onResume();
 		
 		// Check to see if we need to change modes
-		if ( mDbHelper.hasRecentFiles() != recentMode ) {
+		if ( fileHistory.hasRecentFiles() != recentMode ) {
 			// Restart the activity
 			Intent intent = getIntent();
 			startActivity(intent);
@@ -343,15 +360,9 @@ public class FileSelectActivity extends ListActivity {
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		super.onCreateOptionsMenu(menu);
-
-		menu.add(0, MENU_DONATE, 0, R.string.menu_donate);
-		menu.findItem(MENU_DONATE).setIcon(android.R.drawable.ic_menu_share);
-
-		menu.add(0, MENU_APP_SETTINGS, 0, R.string.menu_app_settings);
-		menu.findItem(MENU_APP_SETTINGS).setIcon(android.R.drawable.ic_menu_preferences);
 		
-		menu.add(0, MENU_ABOUT, 0, R.string.menu_about);
-		menu.findItem(MENU_ABOUT).setIcon(android.R.drawable.ic_menu_help);
+		MenuInflater inflater = getMenuInflater();
+		inflater.inflate(R.menu.fileselect, menu);
 
 		return true;
 	}
@@ -359,7 +370,7 @@ public class FileSelectActivity extends ListActivity {
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch (item.getItemId()) {
-		case MENU_DONATE:
+		case R.id.menu_donate:
 			try {
 				Util.gotoUrl(this, R.string.donate_url);
 			} catch (ActivityNotFoundException e) {
@@ -369,12 +380,12 @@ public class FileSelectActivity extends ListActivity {
 			
 			return true;
 			
-		case MENU_ABOUT:
+		case R.id.menu_about:
 			AboutDialog dialog = new AboutDialog(this);
 			dialog.show();
 			return true;
 			
-		case MENU_APP_SETTINGS:
+		case R.id.menu_app_settings:
 			AppSettingsActivity.Launch(this);
 			return true;
 		}
@@ -399,10 +410,17 @@ public class FileSelectActivity extends ListActivity {
 			
 			TextView tv = (TextView) acmi.targetView;
 			String filename = tv.getText().toString();
-			mDbHelper.deleteFile(filename);
-			
-			refreshList();
-			
+			new AsyncTask<String, Void, Void>() {
+				protected java.lang.Void doInBackground(String... args) {
+					String filename = args[0];
+					fileHistory.deleteFile(filename);
+					return null;
+				}
+
+				protected void onPostExecute(Void v) {
+					refreshList();
+				}
+			}.execute(filename);
 			return true;
 		}
 		
@@ -410,9 +428,9 @@ public class FileSelectActivity extends ListActivity {
 	}
 	
 	private void refreshList() {
-		CursorAdapter ca = (CursorAdapter) getListAdapter();
-		Cursor cursor = ca.getCursor();
-		cursor.requery();
+		@SuppressWarnings("unchecked")
+		ArrayAdapter<String> adapter = (ArrayAdapter<String>) getListAdapter();
+		adapter.notifyDataSetChanged();
 	}
 
 }
